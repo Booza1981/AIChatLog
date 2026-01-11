@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat History Search</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Chat History Search</h1>
+            <p class="subtitle">Search across Claude, ChatGPT, Gemini, and Perplexity</p>
+        </header>
+
+        <main>
+            <!-- Search Form -->
+            <div class="search-card">
+                <form id="searchForm" class="search-form">
+                    <div class="search-input-group">
+                        <input
+                            type="text"
+                            id="searchQuery"
+                            placeholder="Search your conversations..."
+                            required
+                            autofocus
+                        >
+                        <button type="submit" class="btn-primary">Search</button>
+                    </div>
+
+                    <div class="filters">
+                        <select id="serviceFilter">
+                            <option value="">All Services</option>
+                            <option value="claude">Claude</option>
+                            <option value="chatgpt">ChatGPT</option>
+                            <option value="gemini">Gemini</option>
+                            <option value="perplexity">Perplexity</option>
+                        </select>
+
+                        <input type="date" id="dateFrom" placeholder="From date">
+                        <input type="date" id="dateTo" placeholder="To date">
+                    </div>
+                </form>
+            </div>
+
+            <!-- Stats Summary -->
+            <div id="statsCard" class="stats-card" style="display: none;">
+                <div class="stat-item">
+                    <span class="stat-value" id="statTotal">0</span>
+                    <span class="stat-label">Total Conversations</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="statClaude">0</span>
+                    <span class="stat-label">Claude</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="statChatGPT">0</span>
+                    <span class="stat-label">ChatGPT</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="statGemini">0</span>
+                    <span class="stat-label">Gemini</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="statPerplexity">0</span>
+                    <span class="stat-label">Perplexity</span>
+                </div>
+            </div>
+
+            <!-- Recent Conversations -->
+            <div id="recentChats" class="recent-section">
+                <h2 class="section-title">Recent Conversations</h2>
+                <div id="recentList" class="recent-list">
+                    <div class="loading-recent">Loading recent chats...</div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div id="results" class="results-section" style="display: none;">
+                <div class="welcome-message">
+                    <h2>Welcome to Chat History Search!</h2>
+                    <p>Enter a search query above to find conversations across all your chat services.</p>
+                    <p class="note">Phase 1 Complete - Search functionality ready. Scraping functionality coming in Phase 2.</p>
+                </div>
+            </div>
+
+            <!-- Loading indicator -->
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Searching...</p>
+            </div>
+        </main>
+
+        <footer>
+            <div class="footer-links">
+                <a href="/api/health" target="_blank">System Health</a>
+                <span>•</span>
+                <a href="/docs" target="_blank">API Docs</a>
+                <span>•</span>
+                <a href="dashboard.html">Dashboard</a>
+            </div>
+            <p>Chat History Search System • Phase 1 Complete ✅</p>
+        </footer>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+
+        // Get external URL for conversation
+        function getExternalUrl(source, conversationId) {
+            const urls = {
+                'claude': `https://claude.ai/chat/${conversationId}`,
+                'chatgpt': `https://chat.openai.com/c/${conversationId}`,
+                'gemini': `https://gemini.google.com/app/${conversationId}`,
+                'perplexity': `https://www.perplexity.ai/search/${conversationId}`
+            };
+            return urls[source.toLowerCase()] || '#';
+        }
+
+        // Load stats on page load
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const stats = await response.json();
+
+                document.getElementById('statTotal').textContent = stats.total_conversations;
+                document.getElementById('statClaude').textContent = stats.by_source.claude || 0;
+                document.getElementById('statChatGPT').textContent = stats.by_source.chatgpt || 0;
+                document.getElementById('statGemini').textContent = stats.by_source.gemini || 0;
+                document.getElementById('statPerplexity').textContent = stats.by_source.perplexity || 0;
+
+                if (stats.total_conversations > 0) {
+                    document.getElementById('statsCard').style.display = 'flex';
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        // Load recent conversations
+        async function loadRecentChats() {
+            try {
+                const response = await fetch(`${API_BASE}/recent?limit=15`);
+                const data = await response.json();
+
+                const recentList = document.getElementById('recentList');
+
+                if (data.conversations.length === 0) {
+                    recentList.innerHTML = `
+                        <div class="empty-state">
+                            <p>No conversations yet. Use the Chrome extension to sync your chats!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '';
+                data.conversations.forEach(conv => {
+                    const sourceClass = conv.source.toLowerCase();
+                    const date = new Date(conv.updated_at).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+                    const title = conv.title || 'Untitled Conversation';
+                    const externalUrl = getExternalUrl(conv.source, conv.conversation_id);
+
+                    html += `
+                        <div class="recent-item">
+                            <div class="recent-header">
+                                <span class="badge badge-${sourceClass}">${conv.source}</span>
+                                <span class="recent-date">${date}</span>
+                            </div>
+                            <h3 class="recent-title">${title}</h3>
+                            <div class="recent-meta">${conv.message_count} messages</div>
+                            <div class="recent-actions">
+                                <a href="${externalUrl}" target="_blank" class="btn-external">
+                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                        <path fill-rule="evenodd" d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5z"/>
+                                        <path fill-rule="evenodd" d="M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0v-5z"/>
+                                    </svg>
+                                    Open in ${conv.source}
+                                </a>
+                                <a href="/api/conversations/${conv.id}" target="_blank" class="btn-local">
+                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                        <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                                        <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                                    </svg>
+                                    View Local
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                recentList.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading recent chats:', error);
+                document.getElementById('recentList').innerHTML = `
+                    <div class="empty-state">
+                        <p>Error loading recent conversations</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Search function
+        async function performSearch(event) {
+            event.preventDefault();
+
+            const query = document.getElementById('searchQuery').value;
+            const source = document.getElementById('serviceFilter').value;
+            const dateFrom = document.getElementById('dateFrom').value;
+            const dateTo = document.getElementById('dateTo').value;
+
+            // Hide recent chats, show results section
+            document.getElementById('recentChats').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+
+            // Show loading
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('results').innerHTML = '';
+
+            try {
+                // Build query params
+                const params = new URLSearchParams({ q: query });
+                if (source) params.append('source', source);
+                if (dateFrom) params.append('date_from', dateFrom);
+                if (dateTo) params.append('date_to', dateTo);
+
+                const response = await fetch(`${API_BASE}/search?${params}`);
+                const data = await response.json();
+
+                displayResults(data);
+            } catch (error) {
+                document.getElementById('results').innerHTML = `
+                    <div class="error-message">
+                        <h3>Search Error</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+
+            if (data.results.length === 0) {
+                resultsDiv.innerHTML = `
+                    <div class="no-results">
+                        <h3>No results found</h3>
+                        <p>Try a different search query or check if conversations have been scraped.</p>
+                        <button class="btn-secondary" onclick="showRecentChats()">← Back to Recent Chats</button>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `<div class="results-header">
+                <h3>Found ${data.total} results</h3>
+                <p>Showing ${data.results.length} conversations</p>
+                <button class="btn-secondary" onclick="showRecentChats()">← Back to Recent Chats</button>
+            </div>`;
+
+            data.results.forEach(result => {
+                const sourceClass = result.source.toLowerCase();
+                const date = new Date(result.updated_at).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+                const externalUrl = getExternalUrl(result.source, result.conversation_id);
+
+                html += `
+                    <div class="result-item">
+                        <div class="result-header">
+                            <span class="badge badge-${sourceClass}">${result.source}</span>
+                            <span class="result-date">${date}</span>
+                        </div>
+                        <h4 class="result-title">${result.title || 'Untitled Conversation'}</h4>
+                        <div class="result-snippet">${result.snippet}</div>
+                        <div class="result-actions">
+                            <span class="result-meta">${result.message_count} messages</span>
+                            <div class="result-buttons">
+                                <a href="${externalUrl}" target="_blank" class="btn-view btn-external-inline">
+                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                        <path fill-rule="evenodd" d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5z"/>
+                                        <path fill-rule="evenodd" d="M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0v-5z"/>
+                                    </svg>
+                                    Open in ${result.source}
+                                </a>
+                                <a href="/api/conversations/${result.id}" target="_blank" class="btn-view">
+                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                        <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                                        <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                                    </svg>
+                                    View Local
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            resultsDiv.innerHTML = html;
+        }
+
+        function showRecentChats() {
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('recentChats').style.display = 'block';
+            document.getElementById('searchQuery').value = '';
+        }
+
+        // Event listeners
+        document.getElementById('searchForm').addEventListener('submit', performSearch);
+
+        // Load data on page load
+        loadStats();
+        loadRecentChats();
+    </script>
+</body>
+</html>

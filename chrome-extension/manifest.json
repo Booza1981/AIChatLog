@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Chat History Sync",
+  "version": "1.0.0",
+  "description": "Automatically sync your AI chat conversations to your local database",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://claude.ai/*",
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["auto-logger.js", "content-scripts/claude-api.js", "content-scripts/claude.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://chat.openai.com/*"],
+      "js": ["content-scripts/chatgpt.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content-scripts/gemini.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

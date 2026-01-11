@@ -1,0 +1,40 @@
+# Environment variables (may contain sensitive config)
+.env
+
+# Database - Contains all your private conversations
+volumes/database/
+
+# Browser profiles - Contains session cookies and authentication
+volumes/browser-profiles/
+
+# Extension console logs - May contain sensitive debugging info
+extension-console.log
+*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+*.seed
+*.pid.lock

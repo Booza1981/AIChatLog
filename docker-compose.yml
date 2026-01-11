@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: chat-history-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./volumes/browser-profiles:/app/volumes/browser-profiles
+      - ./volumes/database:/app/volumes/database
+      # Uncomment for development (code hot-reload)
+      - ./backend:/app
+    environment:
+      - SCRAPE_INTERVAL_HOURS=${SCRAPE_INTERVAL_HOURS:-2}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+      - DATABASE_PATH=/app/volumes/database/conversations.db
+      - PROFILES_PATH=/app/volumes/browser-profiles
+      - DISPLAY=vnc:0  # Connect to VNC's X11 display
+    # CRITICAL: Prevents Chromium crashes due to shared memory limits
+    shm_size: '2gb'
+    # Required for Chrome sandboxing in containers
+    cap_add:
+      - SYS_ADMIN
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - chat-history-net
+
+  # VNC service for initial authentication setup
+  # Start with: docker-compose --profile setup up vnc
+  # Access at: http://localhost:6080 (noVNC web interface)
+  vnc:
+    image: dorowu/ubuntu-desktop-lxde-vnc:focal
+    container_name: chat-history-vnc
+    ports:
+      - "5900:5900"  # VNC port (for VNC clients)
+      - "6080:80"    # noVNC web interface (access via browser)
+    volumes:
+      - ./volumes/browser-profiles:/app/volumes/browser-profiles
+    environment:
+      - VNC_PASSWORD=${VNC_PASSWORD:-changeme123}
+      - RESOLUTION=1920x1080
+    shm_size: '2gb'  # Also needed for browser in VNC
+    profiles:
+      - setup  # Only starts with --profile setup flag
+    networks:
+      - chat-history-net
+
+  frontend:
+    build: ./frontend
+    container_name: chat-history-frontend
+    ports:
+      - "3000:80"
+    volumes:
+      # Mount frontend files for live updates
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - chat-history-net
+
+networks:
+  chat-history-net:
+    driver: bridge
+
+volumes:
+  browser-profiles:
+    driver: local
+  database:
+    driver: local
