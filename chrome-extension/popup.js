@@ -113,8 +113,17 @@ async function handleSyncAll(event) {
   console.log('[Popup] Sync All button clicked');
   const button = document.getElementById('syncAll');
 
+  // Detect which service based on active tab
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  let serviceName = 'Claude';
+  if (activeTab.url.includes('gemini.google.com')) {
+    serviceName = 'Gemini';
+  } else if (activeTab.url.includes('chat.openai.com')) {
+    serviceName = 'ChatGPT';
+  }
+
   // Confirm action FIRST (before disabling button)
-  const confirmed = confirm(`This will sync ALL conversations from Claude.\n\nIt will navigate through each conversation automatically.\n\nThis may take several minutes. Continue?`);
+  const confirmed = confirm(`This will sync ALL conversations from ${serviceName}.\n\nThis will use the API to fetch all conversations.\n\nThis may take several minutes. Continue?`);
 
   if (!confirmed) {
     console.log('[Popup] User cancelled');

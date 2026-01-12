@@ -4,6 +4,65 @@
 
 Build a self-hosted alternative to Echoes that automatically scrapes and indexes conversations from Claude, ChatGPT, Gemini, and Perplexity. Must run in Docker with persistent storage, handle streaming responses, and maintain authenticated sessions across restarts.
 
+## IMPLEMENTATION APPROACH - BROWSER EXTENSION (UPDATED)
+
+**⚠️ IMPORTANT UPDATE:** After testing, the Playwright-based scraping approach faces significant challenges with bot detection, Cloudflare protection, and complex authentication flows. The **browser extension approach** has been adopted as the primary method.
+
+### Why Browser Extension?
+
+1. **No Bot Detection:** Runs in the user's real browser session with existing authentication
+2. **Simple DOM Extraction:** Direct access to rendered page content
+3. **No Authentication Issues:** Uses user's existing logged-in session
+4. **Reliable:** Works immediately without complex browser automation
+5. **Fast:** No need for Playwright/Selenium overhead
+
+### Architecture with Browser Extension
+
+```
+System Components:
+1. Chrome Extension (chrome-extension/)
+   - Content scripts for each service (claude.js, gemini.js, chatgpt.js)
+   - Popup UI for manual sync
+   - Background worker for scheduled sync
+
+2. Backend (backend/)
+   - FastAPI server receiving data from extension
+   - /api/import/{service} endpoint for bulk imports
+   - Database storage with FTS5 search
+
+3. Frontend (frontend/)
+   - Search interface
+   - Recent conversations view
+```
+
+### How It Works
+
+1. User installs Chrome extension
+2. User browses Claude/Gemini/ChatGPT normally
+3. Extension extracts conversation data from DOM
+4. Extension sends to local backend API (`http://localhost:8000`)
+5. Backend stores in SQLite with FTS5 indexing
+6. User searches via frontend dashboard
+
+### Service-Specific DOM Selectors
+
+**Claude (claude.ai):**
+- Conversations: `a[data-dd-action-name="sidebar-chat-item"]`
+- User messages: `div[data-testid="user-message"]`
+- Claude responses: `.font-claude-response`
+- Current conversation ID: Extract from URL `/chat/{id}`
+
+**Gemini (gemini.google.com):**
+- Chat list container: `conversations-list`
+- Individual chats: `div[data-test-id="conversation"]`
+- Chat titles: `.conversation-title`
+- User prompts: `user-query` → `div[class*="query-text"]`
+- Model responses: `model-response` → `message-content div[class*="markdown"]`
+- Main chat area: `div#chat-history`
+
+**ChatGPT (chat.openai.com):**
+- TBD - to be implemented
+
 ## ARCHITECTURE
 
 ```

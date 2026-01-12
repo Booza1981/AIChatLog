@@ -32,7 +32,13 @@
     },
     {
       "matches": ["https://gemini.google.com/*"],
-      "js": ["content-scripts/gemini.js"],
+      "js": ["gemini-xhr-interceptor.js", "gemini-token-helper.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["test-gemini-minimal.js", "content-scripts/gemini-api.js", "content-scripts/gemini.js"],
       "run_at": "document_idle"
     }
   ],

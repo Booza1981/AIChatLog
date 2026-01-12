@@ -1,6 +1,6 @@
 # Current Status - Chat History Search System
 
-**Last Updated:** 2026-01-11
+**Last Updated:** 2026-01-12
 
 ## 🎯 Current Implementation: Chrome Extension + API Sync
 
@@ -11,6 +11,7 @@ We **abandoned the Playwright approach** due to Cloudflare bot detection and swi
 1. **Backend (FastAPI)**
    - ✅ SQLite database with FTS5 full-text search
    - ✅ `/api/import/claude` - Import conversations from extension
+   - ✅ `/api/import/gemini` - Import Gemini conversations
    - ✅ `/api/search` - Full-text search across conversations
    - ✅ `/api/stats` - Statistics dashboard
    - ✅ `/api/conversations/{id}` - View full conversation as HTML
@@ -19,7 +20,7 @@ We **abandoned the Playwright approach** due to Cloudflare bot detection and swi
 
 2. **Frontend (Nginx)**
    - ✅ **Recent conversations on main page** - Shows 15 most recent chats in grid layout
-   - ✅ **Dual link system** - Both "Open in Claude" and "View Local" buttons
+   - ✅ **Dual link system** - Both "Open in Claude/Gemini" and "View Local" buttons
    - ✅ Search interface with prominent result links
    - ✅ View full conversations with formatting
    - ✅ Statistics dashboard showing conversation counts
@@ -27,21 +28,32 @@ We **abandoned the Playwright approach** due to Cloudflare bot detection and swi
    - ✅ Responsive design (mobile-friendly)
    - ✅ Modern UI with hover effects and polish
 
-3. **Chrome Extension (Primary Sync Method)**
+3. **Chrome Extension - Claude Integration**
    - ✅ Loads in user's browser (no bot detection!)
    - ✅ **API-based sync** - Uses Claude's internal API endpoints
-   - ✅ Syncs **ALL 839 conversations** (not just visible 30 in sidebar)
-   - ✅ Progress notification shows "Syncing X/839..."
+   - ✅ Syncs **ALL conversations** (not just visible in sidebar)
+   - ✅ Progress notification with sync counter
    - ✅ Automatic console logging to backend for debugging
    - ✅ Single conversation sync ("Sync Current")
    - ✅ Full sync ("Sync All Conversations")
    - ✅ No page navigation needed - all via API calls
 
+4. **Chrome Extension - Gemini Integration** ✨ NEW
+   - ✅ **API-based sync** - Uses Google's batchexecute API
+   - ✅ **XHR interceptor** - Captures tokens in MAIN world at document_start
+   - ✅ **Pagination working** - Syncs all conversations (hundreds+)
+   - ✅ **Multi-chunk response parsing** - Handles Google's complex format
+   - ✅ **Multiple message exchanges** - Full conversation history per chat
+   - ✅ **Chronological order** - Messages in correct oldest-to-newest order
+   - ✅ **Actual timestamps** - Uses conversation dates, not sync time
+   - ✅ MaZiqc RPC (list conversations) + hNvQHb RPC (get conversation)
+   - ✅ Continuation token pagination (token becomes next session token)
+
 ### ⚠️ Known Issues
 
-1. **No ChatGPT/Gemini Support Yet**
-   - Only Claude is implemented
-   - Need to find their API endpoints (same approach as Claude)
+1. **ChatGPT & Perplexity Not Implemented**
+   - Only Claude and Gemini are working
+   - Need to find their API endpoints (same approach)
 
 ### ✅ Recently Fixed
 
@@ -57,9 +69,7 @@ Check with:
 docker exec chat-history-backend sqlite3 /app/volumes/database/conversations.db "SELECT COUNT(*) FROM conversations;"
 ```
 
-As of last sync:
-- **4 conversations** imported successfully during testing
-- **839 total conversations** available in Claude API
+The extension successfully syncs all available conversations from both Claude and Gemini.
 
 ## 🏗️ Architecture Overview
 
@@ -89,6 +99,8 @@ Frontend (localhost:3000)
 
 ## 🔧 How API Sync Works
 
+### Claude Sync
+
 The extension uses Claude's internal API (discovered by inspecting network requests):
 
 1. **Get Organization ID**
@@ -100,7 +112,7 @@ The extension uses Claude's internal API (discovered by inspecting network reque
 2. **Get ALL Conversations**
    ```javascript
    GET https://claude.ai/api/organizations/{orgId}/chat_conversations
-   → Returns: Array of 839 conversations with metadata
+   → Returns: Array of all conversations with metadata
    ```
 
 3. **Get Full Conversation with Messages**
@@ -114,12 +126,61 @@ The extension uses Claude's internal API (discovered by inspecting network reque
    - POST to `/api/import/claude`
    - Backend saves to SQLite
 
+### Gemini Sync ✨ NEW
+
+The extension uses Google's batchexecute API (more complex than Claude):
+
+1. **Capture Tokens via XHR Interceptor**
+   ```javascript
+   // gemini-xhr-interceptor.js runs in MAIN world at document_start
+   // Intercepts ALL XHR requests to capture:
+   // - Session token (700+ char base64 string)
+   // - "at" token (XSRF protection: APwZia...:timestamp)
+   ```
+
+2. **List ALL Conversations (MaZiqc RPC)**
+   ```javascript
+   POST https://gemini.google.com/_/BardChatUi/data/batchexecute
+   f.req=[[["MaZiqc","[20,\"SESSION_TOKEN\",[0,null,1]]",null,"generic"]]]
+
+   → Returns: [null, continuationToken, [20 conversations]]
+   → Use continuationToken as new sessionToken for next page
+   → Repeat until no more continuationToken
+   ```
+
+3. **Get Full Conversation (hNvQHb RPC)**
+   ```javascript
+   POST https://gemini.google.com/_/BardChatUi/data/batchexecute
+   f.req=[[["hNvQHb","[\"conversationId\",10,null,1,[1],[4],null,1]",null,"generic"]]]
+
+   → Returns: Complex nested structure with ALL message exchanges
+   → Parse multi-chunk response format (Google's )]}'prefix + length lines)
+   → Extract user/assistant messages from nested arrays
+   ```
+
+4. **Parse Complex Response Structure**
+   ```javascript
+   // Response format: )]}'<length>\n[JSON]<length>\n[JSON]...
+   // Each exchange: [conversationData[0], null, userMsg, assistantMsg, timestamp]
+   // User message: conversationData[2][0][0]
+   // Assistant message: conversationData[3][0][0][1][0]
+   // Process exchanges in reverse order for chronological sorting
+   ```
+
+5. **Convert & Save**
+   - Convert Gemini's format to database format
+   - Handle multiple exchanges per conversation
+   - Use actual conversation timestamps
+   - POST to `/api/import/gemini`
+
 **Benefits:**
-- ✅ Gets ALL conversations (839), not just visible in sidebar (30)
-- ✅ Much faster than loading pages
+- ✅ Gets ALL conversations, not just visible in sidebar
+- ✅ Automatic pagination with continuation tokens
+- ✅ Full conversation history (all message exchanges)
+- ✅ Proper chronological order
+- ✅ Actual conversation dates
 - ✅ No DOM parsing = more reliable
 - ✅ No bot detection issues
-- ✅ No navigation = no popup closing issues
 
 ## 🚀 Quick Start (Current State)
 
@@ -138,11 +199,11 @@ docker-compose up -d
 ```
 
 ### 3. Use Extension
-1. Open https://claude.ai (log in normally)
+1. Open https://claude.ai or https://gemini.google.com (log in normally)
 2. Click extension icon in toolbar
 3. Click "Sync All Conversations"
-4. Watch blue notification: "Syncing X/839..."
-5. Wait ~1-2 minutes for completion
+4. Watch blue notification with sync progress
+5. Wait for completion (time depends on conversation count)
 
 ### 4. Search Your Conversations
 Open http://localhost:3000 and search!
@@ -232,17 +293,24 @@ docker logs chat-history-backend --tail 100 -f
 
 ## 🔜 Next Steps (For Next Chat)
 
-### Priority 1: ChatGPT & Gemini Support
-- Find their API endpoints (same approach as Claude)
-- Implement API clients in extension
+### Priority 1: ChatGPT Support
+- Find ChatGPT API endpoints (inspect network requests)
+- Implement API client in extension
+- Test sync functionality
+- Add pagination support if needed
+
+### Priority 2: Perplexity Support
+- Find Perplexity API endpoints
+- Implement API client in extension
 - Test sync functionality
 
-### Priority 2: Auto-Sync Scheduling
+### Priority 3: Auto-Sync Scheduling
 - Currently manual sync only
 - Implement periodic background sync
 - Set reasonable interval (e.g., every 4 hours)
+- Add UI to enable/disable auto-sync
 
-### Priority 3: Enhanced Search
+### Priority 4: Enhanced Search
 - Add conversation tagging
 - Filter by date ranges in UI
 - Search within specific conversations
@@ -272,13 +340,16 @@ docker logs chat-history-backend --tail 100 -f
 - [x] Progress notifications working
 - [x] Automatic debugging logs
 - [x] **Full sync works without DevTools** ← FIXED!
-- [x] **842 conversations synced** ← WORKING!
-- [x] **Recent chats display on main page** ← NEW!
-- [x] **External links to Claude.ai** ← NEW!
+- [x] **Claude full sync working** ← WORKING!
+- [x] **Gemini full sync working** ← WORKING!
+- [x] **Gemini pagination working** ← NEW!
+- [x] **Recent chats display on main page** ← DONE!
+- [x] **External links to Claude.ai/Gemini** ← DONE!
 - [x] Search returns accurate results
 - [ ] ChatGPT support added
-- [ ] Gemini support added
+- [ ] Perplexity support added
+- [ ] Auto-sync scheduling
 
 ---
 
-**For next chat:** System fully operational with 842 conversations synced! Frontend polished with recent chats and external links. Next priorities: Add ChatGPT/Gemini support.
+**For next chat:** System fully operational! Claude and Gemini syncing perfectly with full pagination support. Continuation token approach working. Next priorities: Add ChatGPT and Perplexity support.

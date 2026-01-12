@@ -117,15 +117,43 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'triggerSyncAll') {
     console.log('[Background] triggerSyncAll received');
 
-    // Handle everything in background so popup can close
+    // Determine which service to sync based on active tab
     (async () => {
       try {
-        // Find Claude tab
-        const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*' });
-        console.log('[Background] Found Claude tabs:', tabs.length);
+        // Get active tab
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        console.log('[Background] Active tab URL:', activeTab?.url);
+
+        const service = detectService(activeTab?.url);
+        console.log('[Background] Detected service:', service);
+
+        // Define service-specific configurations
+        const serviceConfig = {
+          'claude': {
+            url: 'https://claude.ai/*',
+            scripts: ['auto-logger.js', 'content-scripts/claude-api.js', 'content-scripts/claude.js']
+          },
+          'gemini': {
+            url: 'https://gemini.google.com/*',
+            scripts: ['content-scripts/gemini-api.js', 'content-scripts/gemini.js']
+          }
+        };
+
+        // Default to Claude if no specific service detected
+        const targetService = service || 'claude';
+        const config = serviceConfig[targetService];
+
+        if (!config) {
+          console.error('[Background] Unsupported service:', targetService);
+          return;
+        }
+
+        // Find tabs for the target service
+        const tabs = await chrome.tabs.query({ url: config.url });
+        console.log(`[Background] Found ${tabs.length} ${targetService} tabs`);
 
         if (tabs.length === 0) {
-          console.error('[Background] No Claude.ai tabs open');
+          console.error(`[Background] No ${targetService} tabs open`);
           return;
         }
 
@@ -145,7 +173,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           try {
             await chrome.scripting.executeScript({
               target: { tabId: tab.id },
-              files: ['auto-logger.js', 'content-scripts/claude-api.js', 'content-scripts/claude.js']
+              files: config.scripts
             });
 
             console.log('[Background] Scripts injected, waiting...');
@@ -172,11 +200,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await new Promise(resolve => setTimeout(resolve, 300));
 
         // Send syncAll message
+        console.log(`[Background] Sending syncAll message to ${targetService} tab ${tab.id}...`);
         chrome.tabs.sendMessage(tab.id, { action: 'syncAll' }, (response) => {
           if (chrome.runtime.lastError) {
-            console.error('[Background] syncAll failed:', chrome.runtime.lastError);
+            console.error(`[Background] syncAll failed for ${targetService}:`, chrome.runtime.lastError);
           } else {
-            console.log('[Background] syncAll started:', response);
+            console.log(`[Background] syncAll response from ${targetService}:`, response);
           }
         });
 

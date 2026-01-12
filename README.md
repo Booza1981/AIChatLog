@@ -248,19 +248,22 @@ See `PROJECT_SPEC.md` for detailed schema.
 **What's Working:**
 - ✅ FastAPI backend with SQLite + FTS5 search
 - ✅ **Modern frontend with recent conversations display**
-- ✅ **Dual link system** - Open in Claude.ai OR view local archive
-- ✅ Chrome extension with Claude API integration
-- ✅ Sync ALL conversations (842 synced successfully!)
+- ✅ **Dual link system** - Open in Claude.ai/Gemini OR view local archive
+- ✅ **Chrome extension with Claude API integration** - Full sync of all conversations
+- ✅ **Chrome extension with Gemini API integration** - Full sync with pagination
+- ✅ **Gemini pagination** - Continuation token approach for complete history
+- ✅ **Multiple message exchanges** - Full conversation history per chat
+- ✅ **Chronological message ordering** - Proper oldest-to-newest sorting
 - ✅ Progress tracking and notifications
 - ✅ Automatic console logging for debugging
 - ✅ Responsive mobile-friendly UI
 
 **Known Issues:**
-- ⚠️ ChatGPT and Gemini not yet implemented (Claude works perfectly!)
+- ⚠️ ChatGPT and Perplexity not yet implemented (Claude and Gemini work perfectly!)
 
 **Next Steps:**
 - Add ChatGPT API sync
-- Add Gemini API sync
+- Add Perplexity API sync
 - Enable auto-sync scheduling
 - Add conversation tagging
 - Enhanced search filters
