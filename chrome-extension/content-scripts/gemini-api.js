@@ -331,9 +331,11 @@ function extractConversationIDsFromDOM() {
  * Uses rpcids=MaZiqc to get conversation list
  * Handles pagination to fetch all conversations
  * Also includes conversations visible in DOM sidebar
+ *
+ * @param {boolean} includeStubs - Whether to create stub entries for DOM conversations not in API (default: true)
  */
-async function fetchAllConversationsViaAPI() {
-  console.log('[Gemini API] Fetching all conversations...');
+async function fetchAllConversationsViaAPI(includeStubs = true) {
+  console.log('[Gemini API] Fetching all conversations... (includeStubs:', includeStubs, ')');
 
   try {
     // First, get conversation IDs from DOM (most recent, visible ones)
@@ -439,13 +441,14 @@ async function fetchAllConversationsViaAPI() {
     console.log(`[Gemini API] Total conversations fetched: ${allConversations.length}`);
 
     // Verify that DOM conversations are included, fetch missing ones individually
-    if (domConversationIDs.length > 0) {
+    // Only create stubs if includeStubs is true (for Sync All, not Quick Sync)
+    if (includeStubs && domConversationIDs.length > 0) {
       const fetchedIDs = allConversations.map(conv => conv[0]); // conversation ID is at index 0
       const missingIDs = domConversationIDs.filter(id => !fetchedIDs.includes(id));
 
       if (missingIDs.length > 0) {
         console.warn(`[Gemini API] ⚠️ ${missingIDs.length} visible conversations NOT found in API results:`, missingIDs);
-        console.log(`[Gemini API] Fetching missing conversations individually...`);
+        console.log(`[Gemini API] Creating stub entries for missing conversations...`);
 
         // Fetch each missing conversation by navigating to it and extracting from DOM
         for (const missingID of missingIDs) {
