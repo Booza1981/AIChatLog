@@ -5,8 +5,8 @@ A self-hosted solution for syncing and searching your chat conversations from Cl
 ## 📖 Documentation
 
 - **[CURRENT_STATUS.md](./CURRENT_STATUS.md)** - Current implementation status, architecture, what's working
-- **[DEVTOOLS_BUG.md](./DEVTOOLS_BUG.md)** - Critical bug: Extension only works with DevTools open
-- **[PROJECT_SPEC.md](./PROJECT_SPEC.md)** - Original technical specification
+- **[PROJECT_SPEC.md](./PROJECT_SPEC.md)** - Technical specification and architecture
+- **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)** - Common issues and solutions
 - **[chrome-extension/README.md](./chrome-extension/README.md)** - Extension installation guide
 
 ## ⚠️ Legal Disclaimer
@@ -62,17 +62,12 @@ chrome://extensions/
 
 #### 3. Sync Your Conversations
 
-```bash
-# 1. Open https://claude.ai in Chrome (log in normally)
-# 2. Click the extension icon in your toolbar
-# 3. Click "Sync All Conversations"
-# 4. Click "OK" on confirmation
-# 5. Watch the progress notification
+1. Open https://claude.ai or https://gemini.google.com in Chrome (log in normally)
+2. Click the extension icon in your toolbar
+3. Click "Sync All Conversations"
+4. Wait for sync to complete (watch console with F12 for progress)
 
-# KNOWN ISSUE: Extension currently only works when DevTools is open
-# Workaround: Right-click extension icon → "Inspect" → then click "Sync All"
-# See DEVTOOLS_BUG.md for details
-```
+**Tip:** The sync runs in the background. You can continue browsing while it completes.
 
 #### 4. Use the Search Interface
 
@@ -105,65 +100,58 @@ docker-compose logs -f backend
 ## 📁 Project Structure
 
 ```
-chat-history-search/
-├── backend/
-│   ├── Dockerfile              # Playwright-based container
-│   ├── requirements.txt        # Python dependencies
-│   ├── test_playwright.py      # Infrastructure validation
-│   ├── main.py                 # FastAPI application (Phase 1)
-│   ├── database.py             # SQLite + FTS5 setup
-│   ├── models.py               # Database models
-│   ├── scheduler.py            # Periodic scraping
-│   ├── stream_buffer.py        # SSE/WebSocket handler
-│   ├── scrapers/
-│   │   ├── base.py             # Base scraper class
-│   │   ├── claude.py           # Claude scraper
-│   │   ├── chatgpt.py          # ChatGPT scraper
-│   │   ├── gemini.py           # Gemini scraper
-│   │   └── perplexity.py       # Perplexity scraper
-│   ├── importers/              # Import from official exports
-│   └── scripts/                # Utility scripts
-├── frontend/
-│   ├── index.html              # Search interface
-│   ├── dashboard.html          # Monitoring dashboard
+AIChatLog/
+├── chrome-extension/            # Chrome extension
+│   ├── manifest.json
+│   ├── popup.html
+│   ├── popup.js
+│   ├── background.js            # Auto-sync service worker
+│   └── content-scripts/
+│       ├── claude.js            # Claude sync
+│       ├── claude-api.js
+│       ├── gemini.js            # Gemini sync
+│       └── gemini-api.js
+├── backend/                     # FastAPI server (Docker)
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── main.py                  # API endpoints
+│   ├── database.py              # SQLite + FTS5
+│   ├── models.py
+│   └── scrapers/
+│       └── claude.py            # (Legacy - not used)
+├── frontend/                    # Search UI (Docker)
+│   ├── Dockerfile
+│   ├── index.html
 │   └── styles.css
-├── volumes/
-│   ├── browser-profiles/       # Persistent sessions
-│   └── database/               # SQLite database
+├── scripts/                     # Maintenance scripts
+│   ├── clear_gemini.py
+│   └── fix_gemini_duplicates.py
+├── volumes/                     # Created at runtime
+│   └── database/                # SQLite database
+├── docs/
+│   └── archived/                # Outdated Playwright docs
 ├── docker-compose.yml
-├── .env.example
 └── README.md
 ```
 
 ## 🔧 Configuration
 
-Edit `.env` to customize:
+### Extension Settings
 
-```bash
-# How often to scrape (in hours)
-SCRAPE_INTERVAL_HOURS=2
+Configure auto-sync in the extension popup:
+- **Auto-sync interval:** 1, 2, 4, 12, or 24 hours
+- **Service toggles:** Enable/disable Claude, Gemini, ChatGPT
+- Click the extension icon to access settings
 
-# Logging level
-LOG_LEVEL=INFO
+### Backend Configuration (Optional)
 
-# VNC password (change for security)
-VNC_PASSWORD=your-secure-password
-```
+No configuration required for basic usage. Backend runs on default ports:
+- API: http://localhost:8000
+- Frontend: http://localhost:3000
 
 ## 🔍 API Endpoints
 
-### Scraping
-
-```bash
-# Trigger manual scrape
-curl -X POST http://localhost:8000/api/scrape/claude
-
-# Scrape all services
-curl -X POST http://localhost:8000/api/scrape/all
-
-# Check scrape status
-curl http://localhost:8000/api/scrape/status/{job_id}
-```
+The extension syncs conversations using `/api/import/{service}`. You can also query the API directly:
 
 ### Search
 
@@ -187,41 +175,13 @@ curl http://localhost:8000/api/health
 
 ## 🛠️ Troubleshooting
 
-### Browser Crashes
+For common issues and solutions, see **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)**.
 
-**Symptom:** Chromium crashes with "Out of memory" errors
-
-**Solution:** Ensure `shm_size: '2gb'` is set in docker-compose.yml
-
-```yaml
-backend:
-  shm_size: '2gb'  # CRITICAL
-```
-
-### Session Expired
-
-**Symptom:** Dashboard shows "Session expired" for a service
-
-**Solution:** Re-authenticate using VNC:
-```bash
-docker-compose --profile setup up vnc
-# Then repeat login steps for that service
-```
-
-### No Conversations Found
-
-**Symptom:** Scraper runs but finds no conversations
-
-**Possible causes:**
-1. Session not authenticated - check dashboard status
-2. Selectors changed - service UI updated (needs scraper update)
-3. Rate limiting - wait 1 hour and retry
-
-### Docker Build Fails
-
-**Symptom:** `playwright install` fails during build
-
-**Solution:** Ensure stable internet connection and sufficient disk space (5GB+)
+Quick fixes:
+- **Extension not loading**: Enable Developer mode in chrome://extensions
+- **Backend unreachable**: Run `docker-compose up -d`
+- **Sync fails**: Open console (F12) on Claude/Gemini page to see error details
+- **Recent conversations missing**: Use "Sync All" instead of "Sync Current"
 
 ## 📊 Database Schema
 
@@ -236,10 +196,10 @@ See `PROJECT_SPEC.md` for detailed schema.
 
 ## 🔐 Security Notes
 
-- Browser profiles contain sensitive session cookies
-- Recommended: Set volume permissions `chmod 700 volumes/`
-- Do NOT expose ports 8000/3000 externally without authentication
-- VNC service should only run during setup (not in production)
+- Extension uses your browser's existing authentication (no separate login)
+- Database stored locally in Docker volume (not cloud-synced)
+- Do NOT expose ports 8000/3000 externally without adding authentication
+- Extension only runs on claude.ai, gemini.google.com, chat.openai.com (limited host permissions)
 
 ## 🚧 Development Status
 
@@ -279,23 +239,33 @@ This is a personal-use tool. If you find bugs or have improvements:
 
 ## 📚 Additional Resources
 
-- [Playwright Documentation](https://playwright.dev/python/)
+- [Chrome Extension Documentation](https://developer.chrome.com/docs/extensions/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [SQLite FTS5](https://www.sqlite.org/fts5.html)
 - [PROJECT_SPEC.md](./PROJECT_SPEC.md) - Detailed technical specification
+- [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - Common issues and solutions
 
 ## 🎯 Roadmap
 
-- [x] Phase 0: Infrastructure validation
-- [x] Phase 1: Core backend and database
-- [x] Phase 2: Claude scraper (POC)
-- [ ] Phase 3: Search and import system
-- [ ] Phase 4: Additional service scrapers
-- [ ] Phase 5: Production hardening
+### Completed
+- [x] Chrome extension with Manifest V3
+- [x] Claude sync with API interception
+- [x] Gemini sync with batchexecute API
+- [x] FastAPI backend with SQLite + FTS5
+- [x] Full-text search with highlighting
+- [x] Recent conversations display
+- [x] Auto-sync background service worker
+
+### In Progress
+- [ ] ChatGPT sync implementation
+- [ ] Perplexity sync implementation
+- [ ] Incremental sync (Quick Sync feature)
+
+### Future
 - [ ] Export functionality
 - [ ] Advanced search filters
 - [ ] Conversation tagging
-- [ ] API authentication
+- [ ] Improved UI/UX
 
 ## 📄 License
 

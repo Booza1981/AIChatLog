@@ -2,116 +2,167 @@
 
 ## PROJECT GOAL
 
-Build a self-hosted alternative to Echoes that automatically scrapes and indexes conversations from Claude, ChatGPT, Gemini, and Perplexity. Must run in Docker with persistent storage, handle streaming responses, and maintain authenticated sessions across restarts.
+Build a self-hosted alternative to Echoes that automatically scrapes and indexes conversations from Claude, ChatGPT, Gemini, and Perplexity. Uses a Chrome extension to extract conversation data from your real browser session and stores it in a local searchable database.
 
-## IMPLEMENTATION APPROACH - BROWSER EXTENSION (UPDATED)
+## IMPLEMENTATION APPROACH - CHROME EXTENSION
 
-**⚠️ IMPORTANT UPDATE:** After testing, the Playwright-based scraping approach faces significant challenges with bot detection, Cloudflare protection, and complex authentication flows. The **browser extension approach** has been adopted as the primary method.
+The system uses a **Chrome extension** running in your real browser to extract and sync conversation data. This approach solves all the challenges of browser automation, bot detection, and authentication management.
 
-### Why Browser Extension?
+### Why Chrome Extension?
 
 1. **No Bot Detection:** Runs in the user's real browser session with existing authentication
-2. **Simple DOM Extraction:** Direct access to rendered page content
-3. **No Authentication Issues:** Uses user's existing logged-in session
-4. **Reliable:** Works immediately without complex browser automation
-5. **Fast:** No need for Playwright/Selenium overhead
+2. **Direct DOM/API Access:** Can extract conversation data directly from the page and intercept XHR requests
+3. **No Authentication Issues:** Uses your existing logged-in session (no manual auth setup needed)
+4. **Reliable:** Works immediately without complex browser automation or VNC setup
+5. **Fast:** No Playwright/Selenium overhead, instant sync on demand
+6. **Auto-Sync:** Background service worker can sync automatically every 2 hours
 
-### Architecture with Browser Extension
+### Current Implementation Status
+
+✅ **Claude** - Fully implemented with API-based sync (intercepts XHR requests)
+✅ **Gemini** - Fully implemented with API-based sync (intercepts batchexecute API)
+⏳ **ChatGPT** - Not yet implemented
+⏳ **Perplexity** - Not yet implemented
+
+### System Architecture
 
 ```
-System Components:
-1. Chrome Extension (chrome-extension/)
-   - Content scripts for each service (claude.js, gemini.js, chatgpt.js)
-   - Popup UI for manual sync
-   - Background worker for scheduled sync
-
-2. Backend (backend/)
-   - FastAPI server receiving data from extension
-   - /api/import/{service} endpoint for bulk imports
-   - Database storage with FTS5 search
-
-3. Frontend (frontend/)
-   - Search interface
-   - Recent conversations view
+┌─────────────────────┐
+│  Chrome Extension   │
+│  (User's Browser)   │
+│                     │
+│  • Content Scripts  │
+│  • XHR Interception │
+│  • Auto-sync Timer  │
+│  • Popup UI         │
+└──────────┬──────────┘
+           │ HTTP POST
+           │ (localhost:8000)
+           ▼
+┌─────────────────────┐
+│   FastAPI Backend   │
+│   (Docker)          │
+│                     │
+│  • /api/import      │
+│  • /api/search      │
+│  • SQLite + FTS5    │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│   Static Frontend   │
+│   (nginx, Docker)   │
+│                     │
+│  • Search UI        │
+│  • Dashboard        │
+│  • Recent Chats     │
+└─────────────────────┘
 ```
 
 ### How It Works
 
-1. User installs Chrome extension
-2. User browses Claude/Gemini/ChatGPT normally
-3. Extension extracts conversation data from DOM
-4. Extension sends to local backend API (`http://localhost:8000`)
-5. Backend stores in SQLite with FTS5 indexing
-6. User searches via frontend dashboard
+1. **User installs Chrome extension** (load unpacked in developer mode)
+2. **User browses Claude/Gemini normally** - extension intercepts XHR/fetch requests in the background
+3. **Manual or Auto Sync:**
+   - Click "Sync Current" to sync the current conversation
+   - Click "Sync All" to batch-sync all conversations
+   - Auto-sync runs every 2 hours (configurable) on open tabs
+4. **Extension captures conversation data:**
+   - For Claude: Intercepts conversations API and organization data
+   - For Gemini: Intercepts batchexecute API (MaZiqc for list, hNvQHb for messages)
+   - Captures session tokens automatically (SNlM0e, "at" XSRF)
+5. **Extension sends to backend:** POST to `http://localhost:8000/api/import/{service}`
+6. **Backend stores data:** Upserts conversations into SQLite with FTS5 full-text search
+7. **User searches:** Open http://localhost:3000 to search all conversations
 
-### Service-Specific DOM Selectors
+### Service-Specific Implementation Details
 
 **Claude (claude.ai):**
-- Conversations: `a[data-dd-action-name="sidebar-chat-item"]`
-- User messages: `div[data-testid="user-message"]`
-- Claude responses: `.font-claude-response`
-- Current conversation ID: Extract from URL `/chat/{id}`
+- **API Interception:** Intercepts `/api/organizations/{id}/chat_conversations`
+- **Session Tokens:** Captured from cookies (session key)
+- **Conversation Format:** JSON with uuid, name, created_at, updated_at, messages array
+- **Message Structure:** Role (user/assistant), content, timestamps
 
 **Gemini (gemini.google.com):**
-- Chat list container: `conversations-list`
-- Individual chats: `div[data-test-id="conversation"]`
-- Chat titles: `.conversation-title`
-- User prompts: `user-query` → `div[class*="query-text"]`
-- Model responses: `model-response` → `message-content div[class*="markdown"]`
-- Main chat area: `div#chat-history`
+- **API Interception:** Intercepts POST requests to `/_/BardChatUi/data/batchexecute`
+- **RPC Methods:**
+  - `MaZiqc` - List conversations with pagination (continuation tokens)
+  - `hNvQHb` - Fetch individual conversation messages
+- **Session Tokens:**
+  - `SNlM0e` - Session token (from page source)
+  - `at` - XSRF token (from cookies)
+- **Conversation ID Format:** Stored without `c_` prefix, but API calls require `c_` prefix
+- **Message Structure:** Complex nested arrays, parsed into role/content/timestamp
 
 **ChatGPT (chat.openai.com):**
-- TBD - to be implemented
+- Not yet implemented (Phase 4)
 
-## ARCHITECTURE
+## PROJECT STRUCTURE
 
 ```
-chat-history-search/
-├── README.md (setup instructions + legal disclaimer)
+AIChatLog/
+├── README.md
+├── PROJECT_SPEC.md (this file)
+├── TROUBLESHOOTING.md (common issues and solutions)
 ├── docker-compose.yml
-├── .env.example
-├── backend/
+│
+├── chrome-extension/          # Browser extension
+│   ├── manifest.json
+│   ├── popup.html            # Extension UI
+│   ├── popup.js
+│   ├── background.js          # Auto-sync service worker
+│   ├── auto-logger.js        # Console logging to backend
+│   ├── content-scripts/
+│   │   ├── claude-api.js     # Claude API client
+│   │   ├── claude.js         # Claude content script
+│   │   ├── gemini-api.js     # Gemini API client (batchexecute)
+│   │   └── gemini.js         # Gemini content script
+│   └── icons/
+│
+├── backend/                   # FastAPI server (Docker)
 │   ├── Dockerfile
-│   ├── main.py (FastAPI app)
-│   ├── database.py (SQLite + FTS5 setup with external content tables)
-│   ├── models.py (SQLAlchemy/Tortoise-ORM models)
-│   ├── scheduler.py (APScheduler for periodic scraping)
-│   ├── scraper.py (Playwright scraper orchestrator)
-│   ├── stream_buffer.py (Handle SSE/WebSocket streaming)
-│   ├── scrapers/
-│   │   ├── base.py (abstract base scraper with common logic)
-│   │   ├── claude.py
-│   │   ├── chatgpt.py
-│   │   ├── gemini.py
-│   │   └── perplexity.py
-│   ├── importers/
-│   │   ├── claude_export.py (import from official exports)
-│   │   ├── chatgpt_export.py
-│   │   └── gemini_export.py
-│   ├── search.py (FTS5 search logic)
-│   ├── auth.py (session management and health checks)
-│   └── requirements.txt
-├── frontend/
-│   ├── Dockerfile (nginx)
-│   ├── index.html (search interface)
-│   ├── dashboard.html (monitoring dashboard)
-│   ├── app.js
+│   ├── main.py               # API endpoints
+│   ├── database.py           # SQLite + FTS5 operations
+│   ├── models.py             # Pydantic models
+│   ├── requirements.txt
+│   └── scrapers/
+│       └── claude.py         # (Legacy - not used by extension)
+│
+├── frontend/                  # Search dashboard (Docker)
+│   ├── Dockerfile
+│   ├── index.html            # Search interface
 │   └── styles.css
-└── volumes/
-    ├── browser-profiles/ (persistent Playwright sessions)
-    └── database/ (SQLite database)
+│
+├── scripts/                   # Maintenance scripts
+│   ├── clear_gemini.py       # Clear Gemini conversations
+│   ├── fix_gemini_duplicates.py  # Fix duplicate conversations
+│   └── check_duplicates.py   # Check for duplicates
+│
+├── docs/
+│   └── archived/             # Outdated Playwright/VNC docs
+│
+└── volumes/                   # Docker volumes (created at runtime)
+    └── database/             # SQLite database file
 ```
 
 ## TECH STACK
 
-- **Backend:** Python 3.11+
-- **Framework:** FastAPI (with async/await throughout)
-- **Database:** SQLite with FTS5 (external content tables for performance)
-- **ORM:** SQLAlchemy 2.0+ or Tortoise-ORM (async support)
-- **Browser Automation:** Playwright with playwright-stealth
-- **Scheduling:** APScheduler for periodic tasks
-- **Frontend:** Vanilla JavaScript or htmx (keep it simple)
-- **Container:** Docker Compose with proper Playwright base image
+- **Extension:** Chrome Extension (Manifest V3)
+  - Content scripts injected in MAIN world (for XHR interception)
+  - Background service worker for auto-sync scheduling
+  - Chrome alarms API for periodic sync triggers
+- **Backend:** Python 3.11+ with FastAPI
+  - Async/await throughout
+  - SQLite with FTS5 (external content tables)
+  - Pydantic models for validation
+  - CORS enabled for localhost extension communication
+- **Frontend:** Vanilla JavaScript + HTML/CSS
+  - Static files served by nginx
+  - Simple search interface with filtering
+- **Container:** Docker Compose
+  - Backend: Python FastAPI container
+  - Frontend: nginx container
+  - Shared volume for database persistence
 
 ## DATABASE SCHEMA (CRITICAL - USE EXTERNAL CONTENT FTS5)
 
@@ -469,153 +520,108 @@ async def get_stats():
     }
 ```
 
-## IMPLEMENTATION PHASES
+## IMPLEMENTATION STATUS
 
-### PHASE 0 - INFRASTRUCTURE VALIDATION (DO THIS FIRST - CRITICAL)
+### Completed (Phase 1-3)
 
-Before writing any scraper code, validate the Docker/Playwright setup:
+✅ **Foundation & Backend:**
+- Docker Compose setup with backend + frontend containers
+- FastAPI backend with async/await
+- SQLite database with FTS5 external content tables
+- API endpoints: /api/import, /api/search, /api/stats, /api/health, /api/recent
+- Full-text search with highlighting
+- Frontend search interface with filtering
 
-1. **Create Minimal Test Environment:**
-   - Build Dockerfile with Playwright base image
-   - Add shm_size to docker-compose
-   - Write simple test script:
-   ```python
-   # test_playwright.py
-   from playwright.sync_api import sync_playwright
-   
-   with sync_playwright() as p:
-       browser = p.chromium.launch(headless=True)
-       page = browser.new_page()
-       page.goto('https://example.com')
-       print(page.title())
-       browser.close()
-   ```
-   - Run in container and verify no crashes
+✅ **Chrome Extension:**
+- Manifest V3 extension with content scripts
+- Popup UI with service toggles
+- Background service worker for auto-sync (every 2 hours, configurable)
+- Console logging forwarded to backend (/api/auto-log)
+- Manual sync buttons: "Sync Current", "Sync All"
 
-2. **VNC Setup for Initial Authentication:**
-   - Start VNC service: `docker-compose --profile setup up`
-   - Access noVNC at http://localhost:6080
-   - Open browser, navigate to claude.ai
-   - Complete login (including 2FA if needed)
-   - Save session state
-   - Verify state file exists in mounted volume
+✅ **Claude Integration:**
+- XHR interception for conversations API
+- Organization ID capture
+- Conversation list and message extraction
+- Automatic timestamp parsing
+- Database upsert (no duplicates)
 
-3. **Session Persistence Test:**
-   - Stop and remove containers
-   - Start backend only (not VNC)
-   - Load saved profile in Playwright
-   - Navigate to Claude without login prompt
-   - Confirm still authenticated
+✅ **Gemini Integration:**
+- XHR interception for batchexecute API
+- Session token capture (SNlM0e, "at")
+- Pagination with continuation tokens (MaZiqc RPC)
+- Individual message fetching (hNvQHb RPC)
+- Conversation ID normalization (storage without `c_` prefix, API calls with it)
+- Database upsert with complex timestamp handling
 
-4. **Document Authentication Process:**
-   - Create step-by-step guide in README
-   - Include screenshots for each service
-   - Note any service-specific quirks
+### In Progress / Future
 
-**ONLY PROCEED IF ALL PHASE 0 TESTS PASS**
+⏳ **ChatGPT Integration:**
+- Identify API endpoints
+- Implement content script
+- Handle SSE streaming responses
+- Test sync and storage
 
-### PHASE 1 - Foundation
+⏳ **Perplexity Integration:**
+- Investigate API structure
+- Implement content script
 
-1. Project structure setup
-2. Docker environment (validated from Phase 0)
-3. FastAPI backend skeleton
-4. Database setup with external content FTS5
-5. SQLAlchemy/Tortoise-ORM models
-6. Basic API endpoints (health, stats)
-7. Simple frontend shell
+⏳ **Incremental Sync (Deferred):**
+- Attempted in feature/quick-sync branch but rolled back due to complexity
+- Check which conversations need updating before fetching full data
+- Would require /api/conversations/check endpoint
+- Needs proper stub conversation timestamp handling
 
-**Before proceeding, show me:**
-- Complete database schema SQL
-- API endpoint structure (OpenAPI spec)
-- Base scraper class design
-- Docker configuration files
+⏳ **Performance Optimizations:**
+- Batch API requests more efficiently
+- Reduce redundant DOM queries
+- Optimize database upserts
 
-### PHASE 2 - First Scraper (Claude - Proof of Concept)
-
-1. Implement BaseScraper class
-2. Create Claude-specific scraper:
-   - Identify API endpoints (use browser DevTools)
-   - Implement request interception
-   - Handle streaming if present
-   - Parse conversation structure
-3. Session management and health checks
-4. Test full flow:
-   - Authenticate via VNC
-   - Run scraper
-   - Verify data in database
-   - Test search functionality
-
-**Before proceeding, demonstrate:**
-- Successful scrape of 10 conversations
-- FTS5 search returning results
-- Session persistence after restart
-
-### PHASE 3 - Core Features
-
-1. StreamBuffer implementation for SSE handling
-2. Import system for official exports (faster initial load)
-3. Full search implementation with highlighting
-4. Complete frontend (search interface + dashboard)
-5. Scheduled scraping with APScheduler
-6. Error handling and retry logic
-
-### PHASE 4 - Additional Services
-
-1. ChatGPT scraper (SSE streaming - most complex)
-2. Gemini scraper
-3. Perplexity scraper
-4. Per-service error isolation
-
-### PHASE 5 - Polish & Production
-
-1. Comprehensive logging
-2. Re-authentication workflows
-3. Rate limiting and backoff
-4. Security hardening
-5. Complete documentation
-6. Performance optimization
+⏳ **UI Improvements:**
+- Better error messaging in extension popup
+- Sync progress indicators
+- Dashboard enhancements (conversation view, export)
 
 ## CRITICAL CONSIDERATIONS
 
-### Authentication (Biggest Challenge)
+### Authentication (Solved by Extension Approach)
 
-- Sessions expire after days/weeks (varies by service)
-- Implement session health checks before each scrape
-- Alert user when re-auth needed (dashboard indicator)
-- VNC provides manual intervention path for 2FA
-- Document that some services may require weekly re-auth
+- **No authentication management needed** - extension uses your existing logged-in session
+- **Sessions managed by browser** - as long as you're logged into Claude/Gemini, extension works
+- **No bot detection issues** - running in real browser with real cookies
+- **No 2FA complications** - extension works after you're already authenticated
 
-### Anti-Detection
+### Error Handling
 
-- Use playwright-stealth (install: `pip install playwright-stealth`)
-- Randomize delays: 1-3 seconds between requests
-- Realistic user agents (update quarterly)
-- Respect rate limits (exponential backoff: 1s, 2s, 4s, 8s...)
-- Monitor for CAPTCHAs (log and alert, don't crash)
-
-### Error Handling Philosophy
-
-- Each scraper runs in isolation (one failure doesn't break others)
-- Log all errors with full context (traceback, service, timestamp)
-- Track consecutive failures (alert after 3+)
-- Provide manual override options in dashboard
-- Never crash the entire system for one service issue
+- Extension logs errors to browser console (F12 to debug)
+- Backend logs all import errors with full context
+- Each service syncs independently (Claude failure doesn't affect Gemini)
+- UPSERT database operations prevent duplicates
+- Failed syncs can be retried by clicking sync button again
 
 ### Security
 
-- Browser profiles contain sensitive session cookies
-- Set Docker volume permissions: `chmod 700 volumes/`
-- Add basic API authentication (API keys) before exposing externally
-- Consider database encryption at rest (optional, document trade-offs)
-- CORS protection on API endpoints
+- **Extension permissions**: Host permissions for claude.ai, gemini.google.com, chat.openai.com
+- **Local only**: Backend runs on localhost:8000 (not exposed to internet)
+- **Database**: Stored locally in Docker volume (not cloud synced)
+- **CORS**: Backend allows requests from extension and frontend only
+- **No API keys needed**: Extension doesn't need auth - uses your browser session
 
 ### Performance
 
-- Use async/await throughout (Playwright, FastAPI, database)
-- External content FTS5 for fast updates
-- Index frequently queried columns
-- Pagination on all list endpoints
-- Consider caching for stats/dashboard
+- **Async operations** throughout backend (FastAPI + aiosqlite)
+- **FTS5 external content tables** for fast full-text search
+- **Indexed columns** for source, timestamps
+- **XHR interception** is lightweight (runs in content script MAIN world)
+- **Batch imports**: "Sync All" fetches all conversations then imports in one request
+
+### Known Issues & Limitations
+
+1. **Gemini Desktop App Conflict**: If Gemini desktop app is open, clicking "Open in Gemini" links may cause conflicts (investigation needed)
+2. **First Page Missing**: Sometimes recent conversations don't sync on first attempt (requires "Sync All")
+3. **Performance**: "Sync All" can take 30-60 seconds for services with 500+ conversations
+4. **ChatGPT Not Implemented**: UI shows toggle but no content script yet
+5. **No Conversation Deletion**: Once synced, conversations stay in database (no auto-cleanup)
 
 ### Legal/TOS Compliance
 
@@ -635,22 +641,71 @@ This tool is for **personal use only** to create a searchable archive of your ow
 By using this tool, you acknowledge that you have read and understood the terms of service for each platform you scrape.
 ```
 
-## QUESTIONS TO ANSWER BEFORE STARTING
+## GETTING STARTED
 
-Before writing any code, provide detailed answers to:
+### Prerequisites
 
-1. **Show me the complete Dockerfile** with Playwright base image and all dependencies
-2. **Show me the docker-compose.yml** with shm_size, volumes, VNC setup
-3. **Show me the complete database schema** including FTS5 external content tables and triggers
-4. **Explain your strategy for handling ChatGPT's SSE streaming** - how will you detect completion?
-5. **Describe the authentication setup process step-by-step** - what will the user experience?
-6. **Show me the BaseScraper class** with browser context management
-7. **Show me how you'll implement the /api/scrape endpoint** with background tasks
+- Chrome browser (for extension)
+- Docker and Docker Compose (for backend/frontend)
+- Git (to clone repository)
 
-## START HERE
+### Setup Steps
 
-Create the project structure, then answer all 7 questions above. Do not proceed with implementation until these architectural decisions are reviewed and approved. The goal is to build the foundation correctly before adding complexity.
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Booza1981/AIChatLog.git
+   cd AIChatLog
+   ```
+
+2. **Start backend and frontend:**
+   ```bash
+   docker-compose up -d
+   ```
+   - Backend: http://localhost:8000
+   - Frontend: http://localhost:3000
+
+3. **Install Chrome extension:**
+   - Open `chrome://extensions` in Chrome
+   - Enable "Developer mode" (top right)
+   - Click "Load unpacked"
+   - Select the `chrome-extension/` directory
+
+4. **Sync conversations:**
+   - Browse to claude.ai or gemini.google.com
+   - Click the extension icon
+   - Click "Sync All Conversations"
+   - Wait for sync to complete (check console with F12)
+
+5. **Search conversations:**
+   - Open http://localhost:3000
+   - Enter search query
+   - Filter by service, date range
+
+For troubleshooting, see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 
 ---
 
-**Take time to plan before coding. Ask clarifying questions if anything is ambiguous.**
+## ALTERNATIVE APPROACH: PLAYWRIGHT (NOT USED)
+
+This project originally planned to use Playwright for browser automation. This approach was **abandoned** in favor of the Chrome extension due to:
+
+**Challenges with Playwright:**
+- ❌ Bot detection (Cloudflare, anti-automation measures)
+- ❌ Complex authentication flows (2FA, email verification)
+- ❌ Requires VNC for manual authentication steps
+- ❌ Session management complexity across restarts
+- ❌ Docker setup complexity (shm_size, profiles, etc.)
+- ❌ Unreliable for services with strong anti-bot protection
+
+**Why Chrome Extension Won:**
+- ✅ No bot detection (runs in real browser)
+- ✅ No authentication management (uses existing session)
+- ✅ Direct API access (XHR interception)
+- ✅ Simple setup (load unpacked extension)
+- ✅ Reliable and fast
+
+The `backend/scrapers/claude.py` file remains from the Playwright implementation but is not used by the extension. Documentation about Playwright/VNC setup has been archived in `docs/archived/` for historical reference.
+
+---
+
+**For questions or issues, see the [GitHub Issues](https://github.com/Booza1981/AIChatLog/issues).**
