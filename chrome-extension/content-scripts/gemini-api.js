@@ -292,14 +292,53 @@ function getSessionParams() {
 }
 
 /**
+ * Normalize Gemini conversation ID by removing "c_" prefix if present
+ * This ensures consistent ID format across DOM and API sources
+ */
+function normalizeConversationId(id) {
+  if (!id) return id;
+  return String(id).replace(/^c_/, '');
+}
+
+/**
+ * Extract conversation IDs from DOM sidebar
+ * This captures the most recent conversations that are visible
+ * Note: Strips the "c_" prefix to match API format
+ */
+function extractConversationIDsFromDOM() {
+  const conversationElements = document.querySelectorAll('[data-test-id="conversation"]');
+  const conversationIDs = [];
+
+  conversationElements.forEach(el => {
+    // Extract from jslog attribute: jslog="...BardVeMetadataKey:[...["c_3911918e14353a6a"...
+    const jslog = el.getAttribute('jslog');
+    if (jslog) {
+      const match = jslog.match(/"(c_[a-f0-9]+)"/);
+      if (match) {
+        // Strip "c_" prefix to normalize with API format
+        const rawId = match[1].replace(/^c_/, '');
+        conversationIDs.push(rawId);
+      }
+    }
+  });
+
+  console.log(`[Gemini API] Extracted ${conversationIDs.length} conversation IDs from DOM (normalized):`, conversationIDs.slice(0, 5));
+  return conversationIDs;
+}
+
+/**
  * Fetch all conversations via Gemini batchexecute API
  * Uses rpcids=MaZiqc to get conversation list
  * Handles pagination to fetch all conversations
+ * Also includes conversations visible in DOM sidebar
  */
 async function fetchAllConversationsViaAPI() {
   console.log('[Gemini API] Fetching all conversations...');
 
   try {
+    // First, get conversation IDs from DOM (most recent, visible ones)
+    const domConversationIDs = extractConversationIDsFromDOM();
+
     // Extract session token from page
     const sessionToken = extractSessionToken();
     if (!sessionToken) {
@@ -367,7 +406,18 @@ async function fetchAllConversationsViaAPI() {
 
         if (Array.isArray(pageConversations)) {
           console.log(`[Gemini API] Page ${pageNum}: Found ${pageConversations.length} conversations`);
-          allConversations = allConversations.concat(pageConversations);
+
+          // Normalize conversation IDs in API results
+          const normalizedConversations = pageConversations.map(conv => {
+            if (Array.isArray(conv) && conv[0]) {
+              const normalized = [...conv];
+              normalized[0] = normalizeConversationId(conv[0]);
+              return normalized;
+            }
+            return conv;
+          });
+
+          allConversations = allConversations.concat(normalizedConversations);
         }
 
         // Check for continuation token
@@ -388,8 +438,86 @@ async function fetchAllConversationsViaAPI() {
 
     console.log(`[Gemini API] Total conversations fetched: ${allConversations.length}`);
 
+    // Verify that DOM conversations are included, fetch missing ones individually
+    if (domConversationIDs.length > 0) {
+      const fetchedIDs = allConversations.map(conv => conv[0]); // conversation ID is at index 0
+      const missingIDs = domConversationIDs.filter(id => !fetchedIDs.includes(id));
+
+      if (missingIDs.length > 0) {
+        console.warn(`[Gemini API] ⚠️ ${missingIDs.length} visible conversations NOT found in API results:`, missingIDs);
+        console.log(`[Gemini API] Fetching missing conversations individually...`);
+
+        // Fetch each missing conversation by navigating to it and extracting from DOM
+        for (const missingID of missingIDs) {
+          try {
+            // Create a stub conversation entry with the ID and title from DOM
+            // Note: DOM has "c_" prefix, so add it back for DOM lookup
+            const domElement = document.querySelector(`[jslog*="c_${missingID}"]`);
+            if (domElement) {
+              const titleElement = domElement.querySelector('.conversation-title');
+              const title = titleElement ? titleElement.textContent.trim() : 'Untitled';
+
+              // Create minimal conversation structure matching API format
+              // Format: [id, title, null, null, [timestamp], ...]
+              const stubConversation = [
+                missingID,
+                title,
+                null,
+                null,
+                [Math.floor(Date.now() / 1000), 0], // Current timestamp as fallback
+                null,
+                null,
+                null,
+                null,
+                null
+              ];
+
+              // Prepend to ensure recent conversations come first
+              allConversations.unshift(stubConversation);
+              console.log(`[Gemini API] ✓ Added missing conversation: ${missingID} - ${title}`);
+            }
+          } catch (err) {
+            console.error(`[Gemini API] Failed to add missing conversation ${missingID}:`, err);
+          }
+        }
+
+        console.log(`[Gemini API] ✓ Added ${missingIDs.length} missing conversations from DOM`);
+      } else {
+        console.log(`[Gemini API] ✓ All ${domConversationIDs.length} visible conversations are included in API results`);
+      }
+    }
+
+    // Deduplicate conversations by ID to prevent any duplicates from being synced
+    const seenIDs = new Set();
+    const deduplicatedConversations = [];
+    let duplicateCount = 0;
+
+    for (const conv of allConversations) {
+      const convId = Array.isArray(conv) ? normalizeConversationId(conv[0]) : null;
+      if (convId) {
+        if (seenIDs.has(convId)) {
+          console.warn(`[Gemini API] ⚠️ Duplicate conversation ID detected and skipped: ${convId}`);
+          duplicateCount++;
+        } else {
+          seenIDs.add(convId);
+          // Ensure the conversation uses the normalized ID
+          if (Array.isArray(conv)) {
+            conv[0] = convId;
+          }
+          deduplicatedConversations.push(conv);
+        }
+      } else {
+        console.warn(`[Gemini API] ⚠️ Conversation without ID, skipping:`, conv);
+      }
+    }
+
+    if (duplicateCount > 0) {
+      console.warn(`[Gemini API] ⚠️ Removed ${duplicateCount} duplicate conversations`);
+    }
+    console.log(`[Gemini API] Final conversation count after deduplication: ${deduplicatedConversations.length}`);
+
     // Return in same format as original: [null, null, [all conversations]]
-    return [null, null, allConversations];
+    return [null, null, deduplicatedConversations];
 
   } catch (error) {
     console.error('[Gemini API] Error fetching conversations:', error);

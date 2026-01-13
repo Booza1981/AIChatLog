@@ -31,7 +31,7 @@ This was because the popup would close before async operations completed.
 - Confirmation dialog appears
 - Click "OK"
 - ✅ Sync starts immediately
-- Blue progress notification appears: "Syncing X/839..."
+- Blue progress notification appears with sync counter
 - API calls fire successfully
 - Conversations sync to database
 
@@ -212,7 +212,7 @@ Extension works when:
 3. Clicks "OK" on confirmation
 4. Sync starts **without needing DevTools open**
 5. Progress notification appears
-6. All 839 conversations sync successfully
+6. All conversations sync successfully
 
 ## Files to Check
 
@@ -274,7 +274,7 @@ The issue had **two root causes**:
 
 ### Testing Confirmed
 - Tested without DevTools: ✅ Working
-- Tested with 840+ conversations: ✅ Working
+- Tested with large conversation history: ✅ Working
 - Background service worker logs show complete execution chain
 
 ### Files Modified
