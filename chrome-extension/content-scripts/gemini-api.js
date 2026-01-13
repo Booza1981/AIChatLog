@@ -331,11 +331,9 @@ function extractConversationIDsFromDOM() {
  * Uses rpcids=MaZiqc to get conversation list
  * Handles pagination to fetch all conversations
  * Also includes conversations visible in DOM sidebar
- *
- * @param {boolean} includeStubs - Whether to create stub entries for DOM conversations not in API (default: true)
  */
-async function fetchAllConversationsViaAPI(includeStubs = true) {
-  console.log('[Gemini API] Fetching all conversations... (includeStubs:', includeStubs, ')');
+async function fetchAllConversationsViaAPI() {
+  console.log('[Gemini API] Fetching all conversations...');
 
   try {
     // First, get conversation IDs from DOM (most recent, visible ones)
@@ -441,8 +439,7 @@ async function fetchAllConversationsViaAPI(includeStubs = true) {
     console.log(`[Gemini API] Total conversations fetched: ${allConversations.length}`);
 
     // Verify that DOM conversations are included, fetch missing ones individually
-    // Only create stubs if includeStubs is true (for Sync All, not Quick Sync)
-    if (includeStubs && domConversationIDs.length > 0) {
+    if (domConversationIDs.length > 0) {
       const fetchedIDs = allConversations.map(conv => conv[0]); // conversation ID is at index 0
       const missingIDs = domConversationIDs.filter(id => !fetchedIDs.includes(id));
 
@@ -462,12 +459,14 @@ async function fetchAllConversationsViaAPI(includeStubs = true) {
 
               // Create minimal conversation structure matching API format
               // Format: [id, title, null, null, [timestamp], ...]
+              // NOTE: Use null timestamp - we don't know the real timestamp from DOM
+              // Backend will see null and assume it needs syncing (which is correct)
               const stubConversation = [
                 missingID,
                 title,
                 null,
                 null,
-                [Math.floor(Date.now() / 1000), 0], // Current timestamp as fallback
+                null, // No timestamp - forces backend to sync
                 null,
                 null,
                 null,

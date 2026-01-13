@@ -379,8 +379,8 @@ async function performSyncAll() {
     // Show notification
     showNotification('Fetching conversations via API...', 'info');
 
-    // Fetch all conversations via API (with stubs to capture DOM-only conversations)
-    const conversationsData = await fetchAllConversationsViaAPI(true);
+    // Fetch all conversations via API
+    const conversationsData = await fetchAllConversationsViaAPI();
     console.log('[Gemini API] Got conversations data:', conversationsData);
 
     // Parse the conversation list from the response
@@ -542,8 +542,8 @@ async function performSyncQuick() {
     // Show notification
     showNotification('Fetching conversations for quick sync...', 'info');
 
-    // Fetch all conversations via API (without stubs - Quick Sync only uses API results)
-    const conversationsData = await fetchAllConversationsViaAPI(false);
+    // Fetch all conversations via API
+    const conversationsData = await fetchAllConversationsViaAPI();
     console.log('[Gemini API] Got conversations data for quick sync:', conversationsData);
 
     // Parse the conversation list

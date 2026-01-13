@@ -219,8 +219,11 @@ class Database:
                 if not row:
                     # Doesn't exist, needs sync
                     needs_sync.append(conv_id)
-                elif updated_at:
-                    # Compare timestamps if provided
+                elif not updated_at:
+                    # No timestamp provided (e.g., DOM stub), assume needs sync to be safe
+                    needs_sync.append(conv_id)
+                else:
+                    # Compare timestamps
                     db_updated = row[0]
 
                     # Parse timestamp if it's a string
