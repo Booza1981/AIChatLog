@@ -40,6 +40,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true, message: 'Sync started - watch for notifications' });
     return true;
   }
+
+  if (request.action === 'syncQuick') {
+    console.log('[Gemini] Quick sync (incremental) requested');
+    performSyncQuick()
+      .catch(error => {
+        console.error('[Gemini] Quick sync error:', error);
+        showNotification('✗ Quick sync failed: ' + error.message, 'error');
+      });
+    sendResponse({ success: true, message: 'Quick sync started - watch for notifications' });
+    return true;
+  }
 });
 
 // Main sync function
@@ -516,6 +527,188 @@ async function performSyncAll() {
     }
 
     showNotification('✗ Full sync failed: ' + error.message, 'error');
+    throw error;
+  }
+}
+
+/**
+ * Perform quick incremental sync - only sync new/updated conversations
+ * Uses backend check endpoint to determine which conversations need syncing
+ */
+async function performSyncQuick() {
+  try {
+    console.log('[Gemini] ========== performSyncQuick() CALLED (INCREMENTAL MODE) ==========');
+
+    // Show notification
+    showNotification('Fetching conversations for quick sync...', 'info');
+
+    // Fetch all conversations via API
+    const conversationsData = await fetchAllConversationsViaAPI();
+    console.log('[Gemini API] Got conversations data for quick sync:', conversationsData);
+
+    // Parse the conversation list
+    let conversations = [];
+
+    if (Array.isArray(conversationsData) && conversationsData.length >= 3) {
+      const possibleConversations = conversationsData[2];
+      if (Array.isArray(possibleConversations)) {
+        conversations = possibleConversations;
+        console.log('[Gemini] Extracted conversations from index 2');
+      }
+    } else if (Array.isArray(conversationsData)) {
+      conversations = conversationsData;
+    }
+
+    console.log(`[Gemini] Parsed ${conversations.length} conversations for quick sync`);
+
+    if (conversations.length === 0) {
+      showNotification('No conversations found', 'error');
+      return;
+    }
+
+    // Build check payload with conversation IDs and timestamps
+    const checkPayload = conversations.map(conv => {
+      const convId = Array.isArray(conv) ? conv[0] : (conv.id || conv.conversation_id);
+      // Gemini timestamp is at index 4, which is an array [seconds, nanos]
+      const timestampArray = Array.isArray(conv) && conv[4];
+      let updated_at = null;
+
+      if (Array.isArray(timestampArray) && timestampArray[0]) {
+        // Convert Unix timestamp to ISO string
+        updated_at = new Date(timestampArray[0] * 1000).toISOString();
+      }
+
+      return {
+        conversation_id: convId,
+        source: 'gemini',
+        updated_at: updated_at
+      };
+    }).filter(item => item.conversation_id); // Filter out invalid entries
+
+    console.log(`[Gemini] Checking ${checkPayload.length} conversations with backend...`);
+    showNotification(`Checking ${checkPayload.length} conversations...`, 'info');
+
+    // Check with backend which conversations need syncing
+    const checkResponse = await fetch(`${API_BASE}/api/conversations/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversations: checkPayload })
+    });
+
+    if (!checkResponse.ok) {
+      throw new Error(`Backend check failed: ${checkResponse.status}`);
+    }
+
+    const checkResult = await checkResponse.json();
+    const needsSyncIds = new Set(checkResult.needs_sync || []);
+
+    console.log(`[Gemini] Backend says ${needsSyncIds.size} conversations need syncing`);
+
+    if (needsSyncIds.size === 0) {
+      showNotification('✓ All conversations up to date!', 'success');
+      chrome.runtime.sendMessage({
+        action: 'syncComplete',
+        service: SERVICE,
+        result: { synced: 0, failed: 0, total: conversations.length }
+      });
+      return;
+    }
+
+    // Filter to only conversations that need syncing
+    const conversationsToSync = conversations.filter(conv => {
+      const convId = Array.isArray(conv) ? conv[0] : (conv.id || conv.conversation_id);
+      return needsSyncIds.has(convId);
+    });
+
+    console.log(`[Gemini] Will sync ${conversationsToSync.length} conversations`);
+    showNotification(`Syncing ${conversationsToSync.length} conversations...`, 'info');
+
+    // Create persistent progress notification
+    const progressNotification = document.createElement('div');
+    progressNotification.id = 'gemini-sync-progress';
+    progressNotification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #3b82f6;
+      color: white;
+      padding: 16px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      z-index: 10000;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      min-width: 250px;
+    `;
+    document.body.appendChild(progressNotification);
+
+    let synced = 0;
+    let failed = 0;
+
+    // Sync each conversation
+    for (let i = 0; i < conversationsToSync.length; i++) {
+      const conv = conversationsToSync[i];
+      const convId = Array.isArray(conv) ? conv[0] : (conv.id || conv.conversation_id);
+      const convTitle = Array.isArray(conv) ? conv[1] : (conv.title || 'Untitled');
+
+      progressNotification.textContent = `Quick sync ${i + 1}/${conversationsToSync.length}: ${convTitle}`;
+      console.log(`[Gemini] Syncing ${i + 1}/${conversationsToSync.length}: ${convId} - "${convTitle}"`);
+
+      try {
+        // Fetch full conversation with messages
+        const fullConversation = await fetchConversationMessages(convId);
+
+        // Convert to our format
+        const dbConversation = convertGeminiAPIToDBFormat(fullConversation, convId, convTitle);
+
+        // Send to backend
+        const response = await fetch(`${API_BASE}/api/import/gemini`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversations: [dbConversation] })
+        });
+
+        if (response.ok) {
+          synced++;
+          console.log(`[Gemini] ✓ Synced: ${dbConversation.title}`);
+        } else {
+          failed++;
+          console.error(`[Gemini] ✗ Failed to save: ${dbConversation.title}`);
+        }
+      } catch (error) {
+        failed++;
+        console.error(`[Gemini] Error syncing ${convId}:`, error);
+      }
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    // Remove progress notification
+    progressNotification.remove();
+
+    // Show final result
+    showNotification(`✓ Quick sync: ${synced}/${conversationsToSync.length} synced! (${failed} failed)`, 'success');
+    console.log(`[Gemini] Quick sync complete: ${synced} synced, ${failed} failed out of ${conversationsToSync.length} needed`);
+
+    chrome.runtime.sendMessage({
+      action: 'syncComplete',
+      service: SERVICE,
+      result: { synced, failed, total: conversationsToSync.length }
+    });
+
+  } catch (error) {
+    console.error('[Gemini] Quick sync FAILED with error:', error);
+    console.error('[Gemini] Error stack:', error.stack);
+
+    // Remove progress notification if it exists
+    const progressNotification = document.getElementById('gemini-sync-progress');
+    if (progressNotification) {
+      progressNotification.remove();
+    }
+
+    showNotification('✗ Quick sync failed: ' + error.message, 'error');
     throw error;
   }
 }

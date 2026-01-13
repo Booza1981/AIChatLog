@@ -58,6 +58,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Respond immediately so popup doesn't timeout
     sendResponse({ success: true, message: 'Sync started - watch for notifications' });
     return true;
+  } else if (request.action === 'syncQuick') {
+    console.log('[Claude] Quick sync (incremental) requested');
+    debugLog('Quick sync requested', { action: 'syncQuick' });
+
+    performSyncQuick()
+      .catch(error => {
+        console.error('[Claude] Quick sync error:', error);
+        debugLog('Quick sync error', { error: error.message, stack: error.stack });
+        showNotification('✗ Quick sync failed: ' + error.message, 'error');
+      });
+
+    sendResponse({ success: true, message: 'Quick sync started - watch for notifications' });
+    return true;
   }
 });
 
@@ -242,6 +255,165 @@ async function performSyncAll() {
     }
 
     showNotification('✗ Full sync failed: ' + error.message, 'error');
+    throw error;
+  }
+}
+
+/**
+ * Perform quick incremental sync - only sync new/updated conversations
+ * Uses backend check endpoint to determine which conversations need syncing
+ */
+async function performSyncQuick() {
+  try {
+    console.log('[Claude] ========== performSyncQuick() CALLED (INCREMENTAL MODE) ==========');
+    debugLog('performSyncQuick started - incremental mode');
+
+    // Show notification
+    showNotification('Fetching conversations for quick sync...', 'info');
+
+    // Fetch all conversations via API
+    const { orgId, conversations } = await fetchAllConversationsViaAPI();
+
+    console.log(`[Claude] Got ${conversations.length} conversations from API for quick sync`);
+    debugLog('API returned conversations for quick sync', { count: conversations.length });
+
+    if (conversations.length === 0) {
+      showNotification('No conversations found', 'error');
+      return;
+    }
+
+    // Build check payload with conversation IDs and timestamps
+    const checkPayload = conversations.map(conv => ({
+      conversation_id: conv.uuid,
+      source: 'claude',
+      updated_at: conv.updated_at || null
+    })).filter(item => item.conversation_id);
+
+    console.log(`[Claude] Checking ${checkPayload.length} conversations with backend...`);
+    showNotification(`Checking ${checkPayload.length} conversations...`, 'info');
+
+    // Check with backend which conversations need syncing
+    const checkResponse = await fetch(`${API_BASE}/api/conversations/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversations: checkPayload })
+    });
+
+    if (!checkResponse.ok) {
+      throw new Error(`Backend check failed: ${checkResponse.status}`);
+    }
+
+    const checkResult = await checkResponse.json();
+    const needsSyncIds = new Set(checkResult.needs_sync || []);
+
+    console.log(`[Claude] Backend says ${needsSyncIds.size} conversations need syncing`);
+    debugLog('Check result', { total: conversations.length, needsSync: needsSyncIds.size });
+
+    if (needsSyncIds.size === 0) {
+      showNotification('✓ All conversations up to date!', 'success');
+      chrome.runtime.sendMessage({
+        action: 'syncComplete',
+        service: SERVICE,
+        result: { synced: 0, failed: 0, total: conversations.length }
+      });
+      return;
+    }
+
+    // Filter to only conversations that need syncing
+    const conversationsToSync = conversations.filter(conv => needsSyncIds.has(conv.uuid));
+
+    console.log(`[Claude] Will sync ${conversationsToSync.length} conversations`);
+    showNotification(`Syncing ${conversationsToSync.length} conversations...`, 'info');
+
+    // Create persistent progress notification
+    const progressNotification = document.createElement('div');
+    progressNotification.id = 'claude-sync-progress';
+    progressNotification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #3b82f6;
+      color: white;
+      padding: 16px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      z-index: 10000;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      min-width: 250px;
+    `;
+    document.body.appendChild(progressNotification);
+
+    let synced = 0;
+    let failed = 0;
+
+    // Sync each conversation
+    for (let i = 0; i < conversationsToSync.length; i++) {
+      const conv = conversationsToSync[i];
+
+      progressNotification.textContent = `Quick sync ${i + 1}/${conversationsToSync.length}: ${conv.name || 'Untitled'}`;
+      console.log(`[Claude] Syncing ${i + 1}/${conversationsToSync.length}: ${conv.uuid}`);
+
+      try {
+        // Fetch full conversation with messages
+        const fullConversation = await fetchConversationMessages(orgId, conv.uuid);
+
+        // Convert to our format
+        const dbConversation = convertClaudeAPIToDBFormat(fullConversation);
+
+        // Send to backend
+        const response = await fetch(`${API_BASE}/api/import/claude`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversations: [dbConversation] })
+        });
+
+        if (response.ok) {
+          synced++;
+          console.log(`[Claude] ✓ Synced: ${dbConversation.title}`);
+          debugLog('Conversation synced', { title: dbConversation.title, synced, failed });
+        } else {
+          failed++;
+          console.error(`[Claude] ✗ Failed to save: ${dbConversation.title}`);
+          debugLog('Save failed', { title: dbConversation.title, status: response.status });
+        }
+      } catch (error) {
+        failed++;
+        console.error(`[Claude] Error syncing ${conv.uuid}:`, error);
+        debugLog('Sync error', { uuid: conv.uuid, error: error.message });
+      }
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // Remove progress notification
+    progressNotification.remove();
+
+    // Show final result
+    showNotification(`✓ Quick sync: ${synced}/${conversationsToSync.length} synced! (${failed} failed)`, 'success');
+    console.log(`[Claude] Quick sync complete: ${synced} synced, ${failed} failed out of ${conversationsToSync.length} needed`);
+    debugLog('Quick sync COMPLETE', { synced, failed, total: conversationsToSync.length });
+
+    chrome.runtime.sendMessage({
+      action: 'syncComplete',
+      service: SERVICE,
+      result: { synced, failed, total: conversationsToSync.length }
+    });
+
+  } catch (error) {
+    console.error('[Claude] Quick sync FAILED with error:', error);
+    console.error('[Claude] Error stack:', error.stack);
+    debugLog('Quick sync FAILED with exception', { error: error.message, stack: error.stack });
+
+    // Remove progress notification if it exists
+    const progressNotification = document.getElementById('claude-sync-progress');
+    if (progressNotification) {
+      progressNotification.remove();
+    }
+
+    showNotification('✗ Quick sync failed: ' + error.message, 'error');
     throw error;
   }
 }

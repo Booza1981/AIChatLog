@@ -186,6 +186,69 @@ class Database:
 
             return conv
 
+    async def check_conversations_exist(
+        self,
+        conversations: List[Dict[str, str]]
+    ) -> List[str]:
+        """
+        Check which conversations need syncing.
+
+        Args:
+            conversations: List of dicts with 'conversation_id', 'source', and optionally 'updated_at'
+
+        Returns:
+            List of conversation_ids that need syncing (either don't exist or are outdated)
+        """
+        needs_sync = []
+
+        for conv in conversations:
+            conv_id = conv.get('conversation_id')
+            source = conv.get('source')
+            updated_at = conv.get('updated_at')
+
+            if not conv_id or not source:
+                continue
+
+            # Check if conversation exists
+            async with self.db.execute(
+                'SELECT updated_at FROM conversations WHERE conversation_id = ? AND source = ?',
+                (conv_id, source)
+            ) as cursor:
+                row = await cursor.fetchone()
+
+                if not row:
+                    # Doesn't exist, needs sync
+                    needs_sync.append(conv_id)
+                elif updated_at:
+                    # Compare timestamps if provided
+                    db_updated = row[0]
+
+                    # Parse timestamp if it's a string
+                    if isinstance(updated_at, str):
+                        try:
+                            new_updated = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                        except:
+                            # If parsing fails, assume needs sync
+                            needs_sync.append(conv_id)
+                            continue
+                    else:
+                        new_updated = updated_at
+
+                    # Parse DB timestamp
+                    if isinstance(db_updated, str):
+                        try:
+                            db_updated = datetime.fromisoformat(db_updated.replace('Z', '+00:00'))
+                        except:
+                            # If parsing fails, assume needs sync
+                            needs_sync.append(conv_id)
+                            continue
+
+                    # If new version is newer, needs sync
+                    if new_updated > db_updated:
+                        needs_sync.append(conv_id)
+
+        return needs_sync
+
     # ==================== SEARCH OPERATIONS ====================
 
     async def search_conversations(

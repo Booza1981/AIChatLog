@@ -59,6 +59,14 @@ function setupEventListeners() {
     console.log('[Popup Setup] Attached handleSyncNow');
   }
 
+  // Quick sync button
+  const syncQuickBtn = document.getElementById('syncQuick');
+  console.log('[Popup Setup] syncQuick button:', syncQuickBtn);
+  if (syncQuickBtn) {
+    syncQuickBtn.addEventListener('click', handleSyncQuick);
+    console.log('[Popup Setup] Attached handleSyncQuick');
+  }
+
   // Sync all button
   const syncAllBtn = document.getElementById('syncAll');
   console.log('[Popup Setup] syncAll button:', syncAllBtn);
@@ -101,6 +109,49 @@ async function handleSyncNow() {
     button.disabled = false;
     button.textContent = 'Sync Current';
   }
+}
+
+// Handle quick sync (incremental)
+async function handleSyncQuick(event) {
+  // Prevent default
+  if (event) {
+    event.preventDefault();
+  }
+
+  console.log('[Popup] Quick Sync button clicked');
+  const button = document.getElementById('syncQuick');
+
+  // Detect which service based on active tab
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  let serviceName = 'Claude';
+  if (activeTab.url.includes('gemini.google.com')) {
+    serviceName = 'Gemini';
+  } else if (activeTab.url.includes('chat.openai.com')) {
+    serviceName = 'ChatGPT';
+  }
+
+  // Confirm action FIRST (before disabling button)
+  const confirmed = confirm(`Quick Sync will check all ${serviceName} conversations and only sync new or updated ones.\\n\\nThis is much faster than "Sync All". Continue?`);
+
+  if (!confirmed) {
+    console.log('[Popup] User cancelled');
+    return;
+  }
+
+  // Send message to background
+  console.log('[Popup] Sending triggerSyncQuick to background...');
+
+  chrome.runtime.sendMessage({
+    action: 'triggerSyncQuick'
+  });
+
+  // Show quick message and close popup
+  showStatus('✓ Starting quick sync...', 'success');
+
+  // Close popup after brief delay
+  setTimeout(() => {
+    window.close();
+  }, 500);
 }
 
 // Handle sync all conversations

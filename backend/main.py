@@ -319,6 +319,48 @@ async def get_recent_conversations(limit: int = Query(10, ge=1, le=50)):
         raise HTTPException(status_code=500, detail=f"Failed to get recent conversations: {str(e)}")
 
 
+@app.post("/api/conversations/check")
+async def check_conversations(request: Request):
+    """
+    Check which conversations need syncing.
+
+    Takes a list of conversations with their IDs and timestamps,
+    returns which ones need to be synced (either don't exist or are outdated).
+
+    Request body:
+    {
+        "conversations": [
+            {"conversation_id": "abc123", "source": "gemini", "updated_at": "2026-01-13T10:00:00Z"},
+            ...
+        ]
+    }
+
+    Response:
+    {
+        "needs_sync": ["abc123", "def456", ...]
+    }
+    """
+    try:
+        data = await request.json()
+        conversations = data.get('conversations', [])
+
+        if not conversations:
+            return {"needs_sync": []}
+
+        needs_sync = await db.check_conversations_exist(conversations)
+
+        logger.info(f"Checked {len(conversations)} conversations, {len(needs_sync)} need syncing")
+
+        return {
+            "needs_sync": needs_sync,
+            "total_checked": len(conversations),
+            "total_needs_sync": len(needs_sync)
+        }
+    except Exception as e:
+        logger.error(f"Check conversations error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to check conversations: {str(e)}")
+
+
 @app.post("/api/import/{service}")
 async def import_conversations(service: str, request: Request):
     """
