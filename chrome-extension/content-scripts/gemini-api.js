@@ -540,10 +540,12 @@ async function fetchConversationMessages(conversationId) {
   try {
     const params = getSessionParams();
 
-    // Build URL
+    // Build URL - Gemini API needs the c_ prefix in the URL path
     const url = new URL(GEMINI_BATCHEXECUTE_URL);
     url.searchParams.set('rpcids', 'hNvQHb');
-    url.searchParams.set('source-path', `/app/${conversationId}`);
+    // Add c_ prefix back for API call (IDs are stored without it, but API needs it)
+    const apiConversationId = conversationId.startsWith('c_') ? conversationId : `c_${conversationId}`;
+    url.searchParams.set('source-path', `/app/${apiConversationId}`);
     url.searchParams.set('hl', params['hl']);
     url.searchParams.set('bl', params['bl']);
     url.searchParams.set('_reqid', Math.floor(Math.random() * 1000000).toString());
@@ -557,7 +559,8 @@ async function fetchConversationMessages(conversationId) {
     console.log('[Gemini API] Requesting conversation:', url.toString());
 
     // Build proper request format: [[["hNvQHb","[\"conversationId\",10,null,1,[1],[4],null,1]",null,"generic"]]]
-    const requestParams = JSON.stringify([conversationId, 10, null, 1, [1], [4], null, 1]);
+    // Use apiConversationId (with c_ prefix) in the request body too
+    const requestParams = JSON.stringify([apiConversationId, 10, null, 1, [1], [4], null, 1]);
     const requestData = JSON.stringify([[["hNvQHb", requestParams, null, "generic"]]]);
     let body = `f.req=${encodeURIComponent(requestData)}`;
 
