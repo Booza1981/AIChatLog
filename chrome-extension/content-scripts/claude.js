@@ -261,25 +261,48 @@ async function performSyncAll() {
 
 /**
  * Perform quick incremental sync - only sync new/updated conversations
- * Uses backend check endpoint to determine which conversations need syncing
+ * Uses smart state tracking to stop at already-synced conversations
  */
 async function performSyncQuick() {
   try {
-    console.log('[Claude] ========== performSyncQuick() CALLED (INCREMENTAL MODE) ==========');
-    debugLog('performSyncQuick started - incremental mode');
+    console.log('[Claude] ========== performSyncQuick() CALLED (SMART INCREMENTAL MODE) ==========');
+    debugLog('performSyncQuick started - smart incremental mode');
 
     // Show notification
     showNotification('Fetching conversations for quick sync...', 'info');
 
-    // Fetch all conversations via API
-    const { orgId, conversations } = await fetchAllConversationsViaAPI();
+    // Load sync state
+    const syncState = await getClaudeSyncState();
+    const quickSyncDepth = syncState.quickSyncDepth || 50;
+    const lastKnownId = syncState.lastKnownConversationId;
+
+    console.log(`[Claude] Sync state: depth=${quickSyncDepth}, lastKnownId=${lastKnownId || 'none'}`);
+    debugLog('Sync state loaded', { quickSyncDepth, lastKnownId });
+
+    // Fetch conversations with smart filtering
+    const { orgId, conversations } = await fetchAllConversationsViaAPI({
+      maxLimit: quickSyncDepth,
+      stopAtConversationId: lastKnownId
+    });
 
     console.log(`[Claude] Got ${conversations.length} conversations from API for quick sync`);
     debugLog('API returned conversations for quick sync', { count: conversations.length });
 
+    // If no conversations returned and we had a lastKnownId, we're up to date
     if (conversations.length === 0) {
-      showNotification('No conversations found', 'error');
-      return;
+      if (lastKnownId) {
+        showNotification('✓ All conversations up to date!', 'success');
+        console.log('[Claude] No new conversations since last sync');
+        chrome.runtime.sendMessage({
+          action: 'syncComplete',
+          service: SERVICE,
+          result: { synced: 0, failed: 0, total: 0 }
+        });
+        return;
+      } else {
+        showNotification('No conversations found', 'error');
+        return;
+      }
     }
 
     // Build check payload with conversation IDs and timestamps
@@ -310,6 +333,11 @@ async function performSyncQuick() {
     debugLog('Check result', { total: conversations.length, needsSync: needsSyncIds.size });
 
     if (needsSyncIds.size === 0) {
+      // Update state even when nothing needs syncing (first conversation is still most recent)
+      if (conversations.length > 0) {
+        await setClaudeLastSyncedConversation(conversations[0].uuid, 'quick');
+        console.log(`[Claude] Updated last known conversation to: ${conversations[0].uuid}`);
+      }
       showNotification('✓ All conversations up to date!', 'success');
       chrome.runtime.sendMessage({
         action: 'syncComplete',
@@ -395,6 +423,12 @@ async function performSyncQuick() {
     showNotification(`✓ Quick sync: ${synced}/${conversationsToSync.length} synced! (${failed} failed)`, 'success');
     console.log(`[Claude] Quick sync complete: ${synced} synced, ${failed} failed out of ${conversationsToSync.length} needed`);
     debugLog('Quick sync COMPLETE', { synced, failed, total: conversationsToSync.length });
+
+    // Update sync state with the most recent conversation
+    if (conversations.length > 0) {
+      await setClaudeLastSyncedConversation(conversations[0].uuid, 'quick');
+      console.log(`[Claude] Updated last known conversation to: ${conversations[0].uuid}`);
+    }
 
     chrome.runtime.sendMessage({
       action: 'syncComplete',

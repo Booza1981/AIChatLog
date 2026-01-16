@@ -22,7 +22,7 @@
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["auto-logger.js", "content-scripts/claude-api.js", "content-scripts/claude.js"],
+      "js": ["auto-logger.js", "claude-sync-state-manager.js", "content-scripts/claude-api.js", "content-scripts/claude.js"],
       "run_at": "document_idle"
     },
     {
