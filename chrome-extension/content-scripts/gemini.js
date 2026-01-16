@@ -542,8 +542,21 @@ async function performSyncQuick() {
     // Show notification
     showNotification('Fetching conversations for quick sync...', 'info');
 
-    // Fetch all conversations via API
-    const conversationsData = await fetchAllConversationsViaAPI();
+    // NEW: Get sync state to determine pagination options
+    const syncState = await getSyncState();
+    const quickSyncDepth = syncState.quickSyncDepth || 50;
+    const maxPages = Math.ceil(quickSyncDepth / 20); // 20 conversations per page
+
+    console.log(`[Gemini] Quick sync depth: ${quickSyncDepth} conversations (${maxPages} pages max)`);
+    if (syncState.lastKnownConversationId) {
+      console.log(`[Gemini] Last synced conversation: ${syncState.lastKnownConversationId}`);
+    }
+
+    // Fetch conversations via API with smart pagination
+    const conversationsData = await fetchAllConversationsViaAPI({
+      maxPages: maxPages,
+      stopAtConversationId: syncState.lastKnownConversationId
+    });
     console.log('[Gemini API] Got conversations data for quick sync:', conversationsData);
 
     // Parse the conversation list
@@ -569,8 +582,9 @@ async function performSyncQuick() {
     // Build check payload with conversation IDs and timestamps
     const checkPayload = conversations.map(conv => {
       const convId = Array.isArray(conv) ? conv[0] : (conv.id || conv.conversation_id);
-      // Gemini timestamp is at index 4, which is an array [seconds, nanos]
-      const timestampArray = Array.isArray(conv) && conv[4];
+      // Gemini conversation list has timestamp at index 5, which is an array [seconds, nanos]
+      // (Note: individual messages from hNvQHb have timestamps at index 4)
+      const timestampArray = Array.isArray(conv) && conv[5];
       let updated_at = null;
 
       if (Array.isArray(timestampArray) && timestampArray[0]) {
@@ -687,6 +701,13 @@ async function performSyncQuick() {
 
     // Remove progress notification
     progressNotification.remove();
+
+    // NEW: Update sync state with newest conversation ID
+    if (conversations.length > 0) {
+      const newestConvId = Array.isArray(conversations[0]) ? conversations[0][0] : conversations[0].conversation_id;
+      await setLastSyncedConversation(newestConvId, 'quick');
+      console.log(`[Gemini] Updated last synced conversation: ${newestConvId}`);
+    }
 
     // Show final result
     showNotification(`✓ Quick sync: ${synced}/${conversationsToSync.length} synced! (${failed} failed)`, 'success');
