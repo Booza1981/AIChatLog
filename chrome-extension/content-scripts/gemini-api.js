@@ -147,6 +147,40 @@ function parseBatchExecuteResponse(text) {
 let capturedSessionToken = null;
 let capturedAtToken = null;
 
+// Load buffered tokens from chrome.storage on script initialization
+(async function initializeTokensFromStorage() {
+  try {
+    const result = await chrome.storage.local.get('gemini_tokens');
+    const data = result['gemini_tokens'];
+
+    if (data) {
+      console.log('[Gemini API] Found buffered tokens in chrome.storage');
+
+      // Check expiry (24 hours)
+      const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
+      const age = Date.now() - data.timestamp;
+
+      if (age < TOKEN_EXPIRY_MS) {
+        if (data.sessionToken) {
+          capturedSessionToken = data.sessionToken;
+          console.log('[Gemini API] ✓ Session token loaded from storage (age: ' + Math.round(age / 1000) + 's)');
+        }
+        if (data.atToken) {
+          capturedAtToken = data.atToken;
+          console.log('[Gemini API] ✓ AT token loaded from storage (age: ' + Math.round(age / 1000) + 's)');
+        }
+      } else {
+        console.log('[Gemini API] Stored tokens expired (age: ' + Math.round(age / 3600000) + 'h), cleaning up');
+        await chrome.storage.local.remove('gemini_tokens');
+      }
+    } else {
+      console.log('[Gemini API] No buffered tokens in storage - will wait for XHR capture or use fallback extraction');
+    }
+  } catch (error) {
+    console.error('[Gemini API] Failed to load buffered tokens from storage:', error);
+  }
+})();
+
 /**
  * Extract session token from page
  * Gemini uses SNlM0e token or similar for authentication
@@ -212,14 +246,42 @@ function extractSessionToken() {
 }
 
 // Listen for tokens captured by gemini-xhr-interceptor.js (runs in MAIN world at document_start)
-window.addEventListener('geminiSessionTokenCaptured', (event) => {
+window.addEventListener('geminiSessionTokenCaptured', async (event) => {
   capturedSessionToken = event.detail;
   console.log('[Gemini API] ✓ Session token received from XHR interceptor:', capturedSessionToken.substring(0, 50) + '...');
+
+  // Store in chrome.storage for persistence
+  try {
+    await chrome.storage.local.set({
+      'gemini_tokens': {
+        sessionToken: capturedSessionToken,
+        atToken: capturedAtToken || null,
+        timestamp: Date.now()
+      }
+    });
+    console.log('[Gemini API] 💾 Stored session token in chrome.storage');
+  } catch (err) {
+    console.error('[Gemini API] ❌ Failed to store session token:', err);
+  }
 });
 
-window.addEventListener('geminiAtTokenCaptured', (event) => {
+window.addEventListener('geminiAtTokenCaptured', async (event) => {
   capturedAtToken = event.detail;
   console.log('[Gemini API] ✓ "at" token received from XHR interceptor:', capturedAtToken);
+
+  // Store in chrome.storage for persistence
+  try {
+    await chrome.storage.local.set({
+      'gemini_tokens': {
+        sessionToken: capturedSessionToken || null,
+        atToken: capturedAtToken,
+        timestamp: Date.now()
+      }
+    });
+    console.log('[Gemini API] 💾 Stored at token in chrome.storage');
+  } catch (err) {
+    console.error('[Gemini API] ❌ Failed to store at token:', err);
+  }
 });
 
 // Listen for manually set token from page context (via gemini-token-helper.js in MAIN world)
@@ -332,8 +394,19 @@ function extractConversationIDsFromDOM() {
  * Handles pagination to fetch all conversations
  * Also includes conversations visible in DOM sidebar
  */
-async function fetchAllConversationsViaAPI() {
-  console.log('[Gemini API] Fetching all conversations...');
+async function fetchAllConversationsViaAPI(options = {}) {
+  const {
+    maxPages = null,  // NEW: limit number of pages to fetch
+    stopAtConversationId = null  // NEW: early termination when this conversation ID is found
+  } = options;
+
+  console.log('[Gemini API] Fetching conversations...');
+  if (maxPages) {
+    console.log(`[Gemini API] Max pages limit: ${maxPages}`);
+  }
+  if (stopAtConversationId) {
+    console.log(`[Gemini API] Will stop at conversation: ${stopAtConversationId}`);
+  }
 
   try {
     // First, get conversation IDs from DOM (most recent, visible ones)
@@ -417,11 +490,35 @@ async function fetchAllConversationsViaAPI() {
             return conv;
           });
 
+          // NEW: Check for early termination - if we find the stopAtConversationId
+          if (stopAtConversationId) {
+            const foundIndex = normalizedConversations.findIndex(conv => {
+              const convId = conv[0];
+              // Check both with and without c_ prefix
+              return convId === stopAtConversationId ||
+                     convId === `c_${stopAtConversationId}` ||
+                     `c_${convId}` === stopAtConversationId;
+            });
+
+            if (foundIndex !== -1) {
+              console.log(`[Gemini API] ✓ Found last synced conversation at index ${foundIndex}, stopping pagination`);
+              // Add conversations up to (but not including) the found one
+              allConversations = allConversations.concat(normalizedConversations.slice(0, foundIndex));
+              continuationToken = null; // Force stop
+              break; // Exit the do-while loop
+            }
+          }
+
           allConversations = allConversations.concat(normalizedConversations);
         }
 
+        // NEW: Check max pages limit
+        if (maxPages && pageNum >= maxPages) {
+          console.log(`[Gemini API] ✓ Reached max pages limit (${maxPages}), stopping`);
+          continuationToken = null;
+        }
         // Check for continuation token
-        if (nextToken && typeof nextToken === 'string') {
+        else if (nextToken && typeof nextToken === 'string') {
           console.log(`[Gemini API] Found continuation token, fetching next page...`);
           continuationToken = nextToken;
           pageNum++;
@@ -445,7 +542,7 @@ async function fetchAllConversationsViaAPI() {
 
       if (missingIDs.length > 0) {
         console.warn(`[Gemini API] ⚠️ ${missingIDs.length} visible conversations NOT found in API results:`, missingIDs);
-        console.log(`[Gemini API] Fetching missing conversations individually...`);
+        console.log(`[Gemini API] Creating stub entries for missing conversations...`);
 
         // Fetch each missing conversation by navigating to it and extracting from DOM
         for (const missingID of missingIDs) {
@@ -459,12 +556,14 @@ async function fetchAllConversationsViaAPI() {
 
               // Create minimal conversation structure matching API format
               // Format: [id, title, null, null, [timestamp], ...]
+              // NOTE: Use null timestamp - we don't know the real timestamp from DOM
+              // Backend will see null and assume it needs syncing (which is correct)
               const stubConversation = [
                 missingID,
                 title,
                 null,
                 null,
-                [Math.floor(Date.now() / 1000), 0], // Current timestamp as fallback
+                null, // No timestamp - forces backend to sync
                 null,
                 null,
                 null,

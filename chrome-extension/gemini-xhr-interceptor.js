@@ -75,7 +75,7 @@ window.XMLHttpRequest = function() {
           console.log('\n  ✅ CAPTURED "at" TOKEN');
           console.log('     Value:', formParams.at);
 
-          // Dispatch event to notify content script
+          // Dispatch event to notify content script (which will store in chrome.storage)
           window.dispatchEvent(new CustomEvent('geminiAtTokenCaptured', {
             detail: formParams.at
           }));
@@ -102,7 +102,7 @@ window.XMLHttpRequest = function() {
                   console.log('     Length:', params[1].length);
                   console.log('     Preview:', params[1].substring(0, 80) + '...');
 
-                  // Dispatch event to notify content script
+                  // Dispatch event to notify content script (which will store in chrome.storage)
                   window.dispatchEvent(new CustomEvent('geminiSessionTokenCaptured', {
                     detail: params[1]
                   }));

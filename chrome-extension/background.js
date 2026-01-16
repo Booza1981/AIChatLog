@@ -46,7 +46,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
-// Perform automatic sync across all open tabs
+// Perform automatic sync across all open tabs (uses incremental Quick Sync)
 async function performAutoSync() {
   const settings = await chrome.storage.sync.get(['enabledServices']);
   const enabled = settings.enabledServices || {};
@@ -61,11 +61,12 @@ async function performAutoSync() {
   for (const tab of tabs) {
     const service = detectService(tab.url);
     if (service && enabled[service]) {
-      console.log(`Triggering sync for ${service} in tab ${tab.id}`);
+      console.log(`Triggering quick sync (incremental) for ${service} in tab ${tab.id}`);
       try {
-        await chrome.tabs.sendMessage(tab.id, { action: 'sync' });
+        // Use syncQuick for automatic background syncing (faster, only syncs new/updated)
+        await chrome.tabs.sendMessage(tab.id, { action: 'syncQuick' });
       } catch (error) {
-        console.error(`Failed to sync ${service}:`, error);
+        console.error(`Failed to quick sync ${service}:`, error);
       }
     }
   }
@@ -211,6 +212,110 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
       } catch (error) {
         console.error('[Background] Error in triggerSyncAll:', error);
+      }
+    })();
+
+    return false; // No response needed, popup can close immediately
+  }
+
+  // Handle triggerSyncQuick from popup (incremental sync)
+  if (request.action === 'triggerSyncQuick') {
+    console.log('[Background] triggerSyncQuick received');
+
+    // Determine which service to sync based on active tab
+    (async () => {
+      try {
+        // Get active tab
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        console.log('[Background] Active tab URL:', activeTab?.url);
+
+        const service = detectService(activeTab?.url);
+        console.log('[Background] Detected service:', service);
+
+        // Define service-specific configurations
+        const serviceConfig = {
+          'claude': {
+            url: 'https://claude.ai/*',
+            scripts: ['auto-logger.js', 'content-scripts/claude-api.js', 'content-scripts/claude.js']
+          },
+          'gemini': {
+            url: 'https://gemini.google.com/*',
+            scripts: ['content-scripts/gemini-api.js', 'content-scripts/gemini.js']
+          }
+        };
+
+        // Default to Claude if no specific service detected
+        const targetService = service || 'claude';
+        const config = serviceConfig[targetService];
+
+        if (!config) {
+          console.error('[Background] Unsupported service:', targetService);
+          return;
+        }
+
+        // Find tabs for the target service
+        const tabs = await chrome.tabs.query({ url: config.url });
+        console.log(`[Background] Found ${tabs.length} ${targetService} tabs`);
+
+        if (tabs.length === 0) {
+          console.error(`[Background] No ${targetService} tabs open`);
+          return;
+        }
+
+        const tab = tabs[0];
+        console.log('[Background] Using tab:', tab.id, tab.url);
+
+        // Test if content script is loaded
+        let contentScriptReady = false;
+        try {
+          const pingResponse = await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
+          console.log('[Background] Content script ping response:', pingResponse);
+          contentScriptReady = true;
+        } catch (pingError) {
+          console.log('[Background] Content script not loaded, injecting...');
+
+          // Inject content scripts
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: config.scripts
+            });
+
+            console.log('[Background] Scripts injected, waiting...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Test again
+            const retryResponse = await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
+            console.log('[Background] Content script now ready:', retryResponse);
+            contentScriptReady = true;
+          } catch (injectError) {
+            console.error('[Background] Failed to inject scripts:', injectError);
+            return;
+          }
+        }
+
+        if (!contentScriptReady) {
+          console.error('[Background] Content script not ready, aborting');
+          return;
+        }
+
+        // Focus the tab
+        await chrome.tabs.update(tab.id, { active: true });
+        await chrome.windows.update(tab.windowId, { focused: true });
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Send syncQuick message
+        console.log(`[Background] Sending syncQuick message to ${targetService} tab ${tab.id}...`);
+        chrome.tabs.sendMessage(tab.id, { action: 'syncQuick' }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error(`[Background] syncQuick failed for ${targetService}:`, chrome.runtime.lastError);
+          } else {
+            console.log(`[Background] syncQuick response from ${targetService}:`, response);
+          }
+        });
+
+      } catch (error) {
+        console.error('[Background] Error in triggerSyncQuick:', error);
       }
     })();
 

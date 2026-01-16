@@ -22,7 +22,7 @@
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["auto-logger.js", "content-scripts/claude-api.js", "content-scripts/claude.js"],
+      "js": ["auto-logger.js", "claude-sync-state-manager.js", "content-scripts/claude-api.js", "content-scripts/claude.js"],
       "run_at": "document_idle"
     },
     {
@@ -38,7 +38,7 @@
     },
     {
       "matches": ["https://gemini.google.com/*"],
-      "js": ["test-gemini-minimal.js", "content-scripts/gemini-api.js", "content-scripts/gemini.js"],
+      "js": ["sync-state-manager.js", "test-gemini-minimal.js", "content-scripts/gemini-api.js", "content-scripts/gemini.js"],
       "run_at": "document_idle"
     }
   ],

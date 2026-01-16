@@ -7,9 +7,19 @@ const CLAUDE_API_BASE = 'https://claude.ai/api';
 
 /**
  * Get all conversations via API (no page loading needed!)
+ * @param {Object} options - Filtering options
+ * @param {number|null} options.maxLimit - Max conversations to return
+ * @param {string|null} options.stopAtConversationId - Stop when this ID is found (for incremental sync)
  */
-async function fetchAllConversationsViaAPI() {
+async function fetchAllConversationsViaAPI(options = {}) {
+  const {
+    maxLimit = null,
+    stopAtConversationId = null
+  } = options;
+
   console.log('[Claude API] Fetching organizations...');
+  if (maxLimit) console.log(`[Claude API] Max limit: ${maxLimit}`);
+  if (stopAtConversationId) console.log(`[Claude API] Stop at conversation: ${stopAtConversationId}`);
 
   // Get organization
   const orgsResponse = await fetch(`${CLAUDE_API_BASE}/organizations`, {
@@ -39,10 +49,31 @@ async function fetchAllConversationsViaAPI() {
     throw new Error(`Failed to fetch conversations: ${convsResponse.status}`);
   }
 
-  const conversations = await convsResponse.json();
-  console.log(`[Claude API] ✓ Found ${conversations.length} conversations via API!`);
+  let conversations = await convsResponse.json();
+  console.log(`[Claude API] ✓ Found ${conversations.length} total conversations via API`);
 
-  return { orgId, conversations };
+  // Apply smart filtering for incremental sync
+  let filteredConversations = conversations;
+
+  // If we have a stop ID, slice at that point (conversations before it are already synced)
+  if (stopAtConversationId) {
+    const stopIndex = conversations.findIndex(c => c.uuid === stopAtConversationId);
+    if (stopIndex !== -1) {
+      filteredConversations = conversations.slice(0, stopIndex);
+      console.log(`[Claude API] Stopped at known conversation, returning ${filteredConversations.length} new conversations`);
+    } else {
+      console.log(`[Claude API] Stop conversation not found in list, returning all`);
+    }
+  }
+
+  // Apply max limit
+  if (maxLimit && filteredConversations.length > maxLimit) {
+    filteredConversations = filteredConversations.slice(0, maxLimit);
+    console.log(`[Claude API] Limited to ${maxLimit} conversations`);
+  }
+
+  console.log(`[Claude API] Returning ${filteredConversations.length} conversations after filtering`);
+  return { orgId, conversations: filteredConversations };
 }
 
 /**
