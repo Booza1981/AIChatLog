@@ -11,6 +11,7 @@
   ],
   "host_permissions": [
     "https://claude.ai/*",
+    "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://gemini.google.com/*",
     "http://localhost:8000/*"
@@ -26,8 +27,8 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://chat.openai.com/*"],
-      "js": ["content-scripts/chatgpt.js"],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "js": ["chatgpt-sync-state-manager.js", "content-scripts/chatgpt-api.js", "content-scripts/chatgpt.js"],
       "run_at": "document_idle"
     },
     {

@@ -16,7 +16,7 @@ async function loadSettings() {
     syncInterval: 2,
     enabledServices: {
       claude: true,
-      chatgpt: false,
+      chatgpt: true,
       gemini: false
     }
   });
