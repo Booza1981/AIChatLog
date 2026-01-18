@@ -197,11 +197,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Handle manual sync from popup
   if (request.action === 'manualSync') {
-    performAutoSync().then((result) => {
-      sendResponse({ success: true, result });
-    }).catch(error => {
-      sendResponse({ success: false, error: error.message });
-    });
+    (async () => {
+      try {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const service = detectService(activeTab?.url || '');
+        if (!service) {
+          throw new Error('Active tab is not a supported service');
+        }
+        await chrome.tabs.sendMessage(activeTab.id, { action: 'sync' });
+        sendResponse({ success: true, service });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
     return true;
   }
 
