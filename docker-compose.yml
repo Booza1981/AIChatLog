@@ -48,6 +48,8 @@ services:
       - PASSWORD=${BROWSER_PASSWORD:-changeme}
     volumes:
       - ${CHROMIUM_CONFIG_PATH:-chromium-config}:/config
+      - /etc/machine-id:/etc/machine-id:ro
+      - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro
     ports:
       - "3700:3000"  # KasmVNC HTTP
       - "3701:3001"  # KasmVNC HTTPS
