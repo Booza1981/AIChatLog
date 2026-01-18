@@ -57,7 +57,7 @@ services:
     build: ./frontend
     container_name: chat-history-frontend
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:80"
     volumes:
       # Mount frontend files for live updates
       - ./frontend:/usr/share/nginx/html:ro
