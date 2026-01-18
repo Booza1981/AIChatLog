@@ -117,16 +117,25 @@ async function performAutoSync() {
     'https://gemini.google.com/*'
   ]});
 
+  let triggered = 0;
+
   for (const tab of tabs) {
     const service = detectService(tab.url);
     if (service && enabled[service]) {
       try {
         await chrome.tabs.sendMessage(tab.id, { action: 'syncQuick' });
+        triggered += 1;
       } catch (error) {
         // Tab may not have content script loaded
       }
     }
   }
+
+  if (triggered === 0) {
+    throw new Error('No enabled service tabs found to sync');
+  }
+
+  return { triggered };
 }
 
 // Detect which service from URL
@@ -177,8 +186,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Handle manual sync from popup
   if (request.action === 'manualSync') {
-    performAutoSync().then(() => {
-      sendResponse({ success: true });
+    performAutoSync().then((result) => {
+      sendResponse({ success: true, result });
     }).catch(error => {
       sendResponse({ success: false, error: error.message });
     });

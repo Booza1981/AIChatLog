@@ -81,7 +81,8 @@ async function handleSyncNow() {
     const response = await chrome.runtime.sendMessage({ action: 'manualSync' });
 
     if (response.success) {
-      showStatus('✓ Sync completed successfully', 'success');
+      const triggered = response.result?.triggered ?? 0;
+      showStatus(`✓ Sync started for ${triggered} tab(s). Check in-page notifications.`, 'success');
       await loadLastSyncTimes();
     } else {
       throw new Error(response.error || 'Sync failed');
