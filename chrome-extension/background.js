@@ -45,6 +45,27 @@ async function getApiBase() {
   return updated.apiBase || 'http://localhost:8000';
 }
 
+async function fetchWithFallback(path, options) {
+  const preferred = await getApiBase();
+  const candidates = [preferred, ...API_BASE_CANDIDATES.filter(base => base !== preferred)];
+
+  let lastError = null;
+  for (const apiBase of candidates) {
+    try {
+      const response = await fetch(`${apiBase}${path}`, options || {});
+      if (apiBase !== preferred) {
+        await chrome.storage.sync.set({ apiBase });
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const message = lastError?.message ? `Failed to fetch: ${lastError.message}` : 'Failed to fetch';
+  throw new Error(message);
+}
+
 // Initialize extension
 chrome.runtime.onInstalled.addListener(async () => {
   const settings = await chrome.storage.sync.get({
@@ -121,8 +142,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'apiFetch') {
     (async () => {
       try {
-        const apiBase = await getApiBase();
-        const response = await fetch(`${apiBase}${request.path}`, request.options || {});
+        const response = await fetchWithFallback(request.path, request.options);
         const body = await response.text();
         const headers = {};
         response.headers.forEach((value, key) => {
