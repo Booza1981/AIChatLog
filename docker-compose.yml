@@ -77,7 +77,7 @@ services:
       - CUSTOM_USER=${BROWSER_USER:-admin}
       - PASSWORD=${BROWSER_PASSWORD:-changeme}
     volumes:
-      - chromium-config:/config
+      - ${CHROMIUM_CONFIG_PATH:-chromium-config}:/config
     ports:
       - "3700:3000"  # KasmVNC HTTP
       - "3701:3001"  # KasmVNC HTTPS
@@ -101,5 +101,4 @@ volumes:
   database:
     driver: local
   chromium-config:
-    name: aichatlog-chromium-config
-    external: true
+    driver: local
