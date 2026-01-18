@@ -101,4 +101,5 @@ volumes:
   database:
     driver: local
   chromium-config:
-    driver: local
+    name: aichatlog-chromium-config
+    external: true
