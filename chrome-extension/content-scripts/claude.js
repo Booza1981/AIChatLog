@@ -581,7 +581,9 @@ function extractMessages() {
       const isUser = element.matches('div[data-testid="user-message"]');
       const role = isUser ? 'user' : 'assistant';
 
-      const content = element.textContent.trim();
+      const content = role === 'assistant'
+        ? extractAssistantContent(element)
+        : element.textContent.trim();
       const timestamp = extractTimestamp(element);
 
       if (content) {
@@ -599,6 +601,28 @@ function extractMessages() {
 
   console.log(`[Claude] Successfully extracted ${messages.length} messages`);
   return messages;
+}
+
+function extractAssistantContent(element) {
+  const clone = element.cloneNode(true);
+  const selectorsToRemove = [
+    'details',
+    '[data-testid*="thought"]',
+    '[class*="thought"]',
+    '[data-testid*="analysis"]',
+    '[class*="analysis"]',
+    '[data-testid*="reason"]',
+    '[class*="reason"]',
+    '[aria-label*="thought"]',
+    '[aria-label*="analysis"]',
+    '[aria-label*="reason"]'
+  ];
+
+  selectorsToRemove.forEach((selector) => {
+    clone.querySelectorAll(selector).forEach((node) => node.remove());
+  });
+
+  return clone.textContent.trim();
 }
 
 // Note: detectRole() and extractContent() are no longer needed
