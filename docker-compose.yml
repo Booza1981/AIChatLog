@@ -57,8 +57,6 @@ services:
     container_name: chat-history-frontend
     ports:
       - "${FRONTEND_PORT:-3000}:80"
-    volumes:
-      # Intentionally no bind-mount in server deploy; use built image contents
     depends_on:
       - backend
     restart: unless-stopped
