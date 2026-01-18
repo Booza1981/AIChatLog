@@ -90,8 +90,7 @@ services:
     devices:
       - /dev/dri:/dev/dri
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     restart: unless-stopped
     networks:
       - chat-history-net
