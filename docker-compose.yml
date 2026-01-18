@@ -7,20 +7,10 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ${BROWSER_PROFILES_PATH:-./volumes/browser-profiles}:/app/volumes/browser-profiles
       - ${DATABASE_VOLUME_PATH:-./volumes/database}:/app/volumes/database
     environment:
-      - SCRAPE_INTERVAL_HOURS=${SCRAPE_INTERVAL_HOURS:-2}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
       - DATABASE_PATH=/app/volumes/database/conversations.db
-      - PROFILES_PATH=/app/volumes/browser-profiles
-      - DISPLAY=vnc:0  # Connect to VNC's X11 display
-    # CRITICAL: Prevents Chromium crashes due to shared memory limits
-    shm_size: '2gb'
-    # Required for Chrome sandboxing in containers
-    cap_add:
-      - SYS_ADMIN
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
@@ -28,26 +18,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - chat-history-net
-
-  # VNC service for initial authentication setup
-  # Start with: docker-compose --profile setup up vnc
-  # Access at: http://localhost:6080 (noVNC web interface)
-  vnc:
-    image: dorowu/ubuntu-desktop-lxde-vnc:focal
-    container_name: chat-history-vnc
-    ports:
-      - "5900:5900"  # VNC port (for VNC clients)
-      - "6080:80"    # noVNC web interface (access via browser)
-    volumes:
-      - ./volumes/browser-profiles:/app/volumes/browser-profiles
-    environment:
-      - VNC_PASSWORD=${VNC_PASSWORD:-changeme123}
-      - RESOLUTION=1920x1080
-    shm_size: '2gb'  # Also needed for browser in VNC
-    profiles:
-      - setup  # Only starts with --profile setup flag
     networks:
       - chat-history-net
 
@@ -96,8 +66,6 @@ networks:
     driver: bridge
 
 volumes:
-  browser-profiles:
-    driver: local
   database:
     driver: local
   chromium-config:

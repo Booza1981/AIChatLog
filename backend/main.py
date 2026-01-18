@@ -3,21 +3,18 @@ Chat History Search - FastAPI Backend
 Phase 1: Full API implementation with database and search
 """
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from typing import Optional
-import uuid
 import logging
 import json
 
 from database import Database
 from models import (
     SearchResponse, ConversationSearchResult, Stats,
-    HealthResponse, ScraperStatus, ScrapeResponse,
-    ScrapeJobStatus, ServiceName
+    HealthResponse
 )
-from scrapers.claude import ClaudeScraper
 
 # Initialize FastAPI
 app = FastAPI(
@@ -45,103 +42,6 @@ logger = logging.getLogger(__name__)
 # Global database instance
 db = Database()
 
-# Global state for tracking active scraping jobs
-active_jobs: dict[str, dict] = {}
-
-# Scraper registry
-SCRAPERS = {
-    'claude': ClaudeScraper,  # Phase 2 - IMPLEMENTED ✓
-    'chatgpt': None,  # ChatGPTScraper - Phase 4
-    'gemini': None,  # GeminiScraper - Phase 4
-    'perplexity': None  # PerplexityScraper - Phase 4
-}
-
-
-async def run_scraper_task(service: str, job_id: str):
-    """
-    Background task that runs the scraper.
-    Updates active_jobs dict with progress/status.
-    """
-    try:
-        # Update job status
-        active_jobs[job_id] = {
-            'service': service,
-            'status': 'running',
-            'started_at': datetime.now(),
-            'conversations_scraped': 0,
-            'error': None
-        }
-
-        # Get scraper class
-        scraper_class = SCRAPERS.get(service)
-        if not scraper_class:
-            raise ValueError(f"Scraper not yet implemented for: {service}")
-
-        # Initialize scraper
-        scraper = scraper_class()
-
-        # Check session health first
-        is_healthy, error_msg = await scraper.check_session_health()
-        if not is_healthy:
-            active_jobs[job_id]['status'] = 'failed'
-            active_jobs[job_id]['error'] = f"Session unhealthy: {error_msg}"
-
-            # Update database
-            await db.update_scraper_status(
-                service=service,
-                success=False,
-                error_message=error_msg
-            )
-            return
-
-        logger.info(f"[{service}] Session healthy, starting scrape...")
-
-        # Run scraper
-        conversations = await scraper.scrape_conversations()
-
-        # Save to database
-        saved_count = 0
-        for conv in conversations:
-            try:
-                await db.upsert_conversation(
-                    conversation_id=conv['conversation_id'],
-                    source=service,
-                    title=conv.get('title'),
-                    messages=conv['messages'],
-                    created_at=conv.get('created_at'),
-                    updated_at=conv.get('updated_at')
-                )
-                saved_count += 1
-                active_jobs[job_id]['conversations_scraped'] = saved_count
-            except Exception as e:
-                logger.error(f"[{service}] Error saving conversation: {e}")
-                continue
-
-        # Mark job as completed
-        active_jobs[job_id]['status'] = 'completed'
-        active_jobs[job_id]['completed_at'] = datetime.now()
-        active_jobs[job_id]['total_conversations'] = saved_count
-
-        # Update scraper status in database
-        await db.update_scraper_status(
-            service=service,
-            success=True,
-            total_conversations=saved_count
-        )
-
-        logger.info(f"[{service}] Scrape completed: {saved_count} conversations saved")
-
-    except Exception as e:
-        logger.error(f"[{service}] Scraping failed: {e}", exc_info=True)
-        active_jobs[job_id]['status'] = 'failed'
-        active_jobs[job_id]['error'] = str(e)
-
-        # Update database
-        await db.update_scraper_status(
-            service=service,
-            success=False,
-            error_message=str(e)
-        )
 
 
 @app.get("/")
@@ -157,102 +57,10 @@ async def root():
             "search": "/api/search",
             "stats": "/api/stats",
             "health": "/api/health",
-            "scrape": "/api/scrape/{service}"
+            "scrape": "disabled"
         }
     }
 
-
-@app.post("/api/scrape/{service}", response_model=ScrapeResponse)
-async def trigger_scrape(service: str, background_tasks: BackgroundTasks):
-    """
-    Trigger scraping for a specific service or all services.
-    Runs in background to avoid blocking the request.
-
-    Args:
-        service: 'claude', 'chatgpt', 'gemini', 'perplexity', or 'all'
-
-    Returns:
-        Immediate response with job ID for tracking
-    """
-    # Validate service
-    valid_services = list(SCRAPERS.keys()) + ['all']
-    if service not in valid_services:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid service. Must be one of: {', '.join(valid_services)}"
-        )
-
-    # Check if service scraper is implemented
-    if service != 'all' and SCRAPERS[service] is None:
-        raise HTTPException(
-            status_code=501,
-            detail=f"Scraper not yet implemented for {service}. Available in Phase 2/4."
-        )
-
-    # Check if service is already running
-    for job_id, job in active_jobs.items():
-        if job['service'] == service and job['status'] == 'running':
-            return ScrapeResponse(
-                status='already_running',
-                service=service,
-                message=f"Scrape already in progress for {service}",
-                job_id=job_id
-            )
-
-    # Generate job ID
-    job_id = str(uuid.uuid4())
-
-    # Schedule background task(s)
-    if service == 'all':
-        # Schedule all implemented services
-        implemented_services = [svc for svc, cls in SCRAPERS.items() if cls is not None]
-        for svc in implemented_services:
-            svc_job_id = f"{job_id}-{svc}"
-            background_tasks.add_task(run_scraper_task, svc, svc_job_id)
-
-        return ScrapeResponse(
-            status='started',
-            service='all',
-            message=f"Started scraping for {len(implemented_services)} services",
-            job_id=job_id
-        )
-    else:
-        # Schedule single service
-        background_tasks.add_task(run_scraper_task, service, job_id)
-
-        return ScrapeResponse(
-            status='started',
-            service=service,
-            message=f"Started scraping for {service}",
-            job_id=job_id
-        )
-
-
-@app.get("/api/scrape/status/{job_id}")
-async def get_scrape_status(job_id: str):
-    """
-    Get status of a scraping job.
-
-    Returns:
-        Job status including progress and errors
-    """
-    # Check if job exists
-    if job_id not in active_jobs:
-        # Also check for 'all' jobs
-        matching_jobs = {k: v for k, v in active_jobs.items() if k.startswith(job_id)}
-        if matching_jobs:
-            return {
-                'job_id': job_id,
-                'type': 'batch',
-                'jobs': matching_jobs
-            }
-        else:
-            raise HTTPException(status_code=404, detail="Job not found")
-
-    return {
-        'job_id': job_id,
-        **active_jobs[job_id]
-    }
 
 
 @app.get("/api/search", response_model=SearchResponse)
@@ -487,18 +295,11 @@ async def health_check():
     """
     try:
         db_healthy = await db.check_connection()
-        service_statuses = await db.get_all_scraper_statuses()
-
-        scraper_statuses = [
-            ScraperStatus(**status)
-            for status in service_statuses
-        ]
-
         return HealthResponse(
             status="healthy" if db_healthy else "degraded",
             timestamp=datetime.now().isoformat(),
             database=db_healthy,
-            services=scraper_statuses
+            services=[]
         )
     except Exception as e:
         logger.error(f"Health check error: {e}", exc_info=True)

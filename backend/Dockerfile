@@ -1,16 +1,12 @@
-# Use official Playwright Python image with all browser dependencies pre-installed
-FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+# Use slim Python base image (Playwright removed)
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies including Mesa for software WebGL rendering
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     sqlite3 \
-    mesa-utils \
-    libgl1-mesa-dri \
-    libgl1-mesa-glx \
-    libosmesa6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better layer caching
@@ -18,9 +14,6 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Playwright browsers (Firefox for better Cloudflare evasion)
-RUN playwright install firefox
 
 # Copy application code
 COPY . .
@@ -30,8 +23,7 @@ RUN mkdir -p /app/volumes/browser-profiles /app/volumes/database && \
     chmod 755 /app/volumes
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PYTHONUNBUFFERED=1
 
 # Health check using curl
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

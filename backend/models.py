@@ -84,30 +84,6 @@ class SearchResponse(BaseModel):
     query: str
 
 
-class ScrapeRequest(BaseModel):
-    """Scrape trigger request."""
-    service: ServiceName
-
-
-class ScrapeResponse(BaseModel):
-    """Scrape trigger response."""
-    status: str
-    service: str
-    message: str
-    job_id: Optional[str] = None
-
-
-class ScrapeJobStatus(BaseModel):
-    """Scrape job status."""
-    job_id: str
-    service: str
-    status: str  # running, completed, failed
-    started_at: datetime
-    completed_at: Optional[datetime] = None
-    conversations_scraped: int = 0
-    error: Optional[str] = None
-
-
 class ScraperStatus(BaseModel):
     """Scraper health status."""
     service: str
