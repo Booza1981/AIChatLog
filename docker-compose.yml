@@ -9,8 +9,6 @@ services:
     volumes:
       - ./volumes/browser-profiles:/app/volumes/browser-profiles
       - ./volumes/database:/app/volumes/database
-      # Uncomment for development (code hot-reload)
-      - ./backend:/app
     environment:
       - SCRAPE_INTERVAL_HOURS=${SCRAPE_INTERVAL_HOURS:-2}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -60,8 +58,7 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:80"
     volumes:
-      # Mount frontend files for live updates
-      - ./frontend:/usr/share/nginx/html:ro
+      # Intentionally no bind-mount in server deploy; use built image contents
     depends_on:
       - backend
     restart: unless-stopped
