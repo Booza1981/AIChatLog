@@ -28,7 +28,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-      disable: true
     networks:
       - chat-history-net
 
@@ -85,7 +84,8 @@ services:
     devices:
       - /dev/dri:/dev/dri
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - chat-history-net
