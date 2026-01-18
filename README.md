@@ -1,6 +1,6 @@
 # Chat History Search System
 
-A self-hosted solution for syncing and searching your chat conversations from Claude, ChatGPT, Gemini, and Perplexity.
+A self-hosted solution for syncing and searching your chat conversations from Claude, ChatGPT, and Gemini.
 
 ## 📖 Documentation
 
@@ -19,7 +19,7 @@ A self-hosted solution for syncing and searching your chat conversations from Cl
 - Not intended for commercial use or redistribution
 - Author assumes no liability for TOS violations or account actions
 
-By using this tool, you acknowledge that you have read and understood the terms of service for each platform you scrape.
+By using this tool, you acknowledge that you have read and understood the terms of service for each platform you sync.
 
 ## 🚀 Quick Start
 
@@ -28,7 +28,7 @@ By using this tool, you acknowledge that you have read and understood the terms 
 ### Prerequisites
 
 - Docker and Docker Compose installed
-- Chrome browser
+- Chrome browser (or Chromium)
 - ~2GB disk space (for Docker images and database)
 
 ### Setup Steps
@@ -39,7 +39,7 @@ By using this tool, you acknowledge that you have read and understood the terms 
 # Copy environment file (optional)
 cp .env.example .env
 
-# Start backend and frontend
+# Start backend and frontend (plus Chromium container for server deployments)
 docker-compose up -d
 
 # Check logs
@@ -64,7 +64,7 @@ chrome://extensions/
 
 1. Open https://claude.ai, https://chatgpt.com, or https://gemini.google.com in Chrome (log in normally)
 2. Click the extension icon in your toolbar
-3. Click "Sync All" or "Quick Sync" (incremental)
+3. Click "Sync Current" (active tab), "Sync All", or "Quick Sync" (incremental)
 4. Wait for sync to complete (progress shown in on-page notification)
 
 **Tip:** The sync runs in the background. You can continue browsing while it completes.
@@ -97,6 +97,14 @@ docker-compose logs -f backend
 # - API docs: http://localhost:8000/docs
 ```
 
+### Server Deployment Notes
+
+- The `chromium` service runs a browser with the extension preloaded for automatic syncing.
+- Override host ports and storage paths with stack env vars:
+  - `BACKEND_PORT`, `FRONTEND_PORT`
+  - `DATABASE_VOLUME_PATH`, `CHROMIUM_CONFIG_PATH`
+- After redeploying the stack, reload the extension in Chromium (`chrome://extensions`) if it doesn’t pick up changes automatically.
+
 ## 📁 Project Structure
 
 ```
@@ -119,8 +127,6 @@ AIChatLog/
 │   ├── main.py                  # API endpoints
 │   ├── database.py              # SQLite + FTS5
 │   ├── models.py
-│   └── scrapers/
-│       └── claude.py            # (Legacy - not used)
 ├── frontend/                    # Search UI (Docker)
 │   ├── Dockerfile
 │   ├── index.html
@@ -150,6 +156,11 @@ Configure auto-sync in the extension popup:
 No configuration required for basic usage. Backend runs on default ports:
 - API: http://localhost:8000
 - Frontend: http://localhost:3000
+
+For server deployments, you can override host ports and storage paths:
+- `BACKEND_PORT` / `FRONTEND_PORT`
+- `DATABASE_VOLUME_PATH`
+- `CHROMIUM_CONFIG_PATH`
 
 ## 🔍 API Endpoints
 
@@ -192,7 +203,7 @@ Uses SQLite with FTS5 (Full-Text Search) for performance:
 - **conversations**: Main conversation metadata
 - **messages**: Individual messages (normalized)
 - **conversations_fts**: FTS5 virtual table for fast search
-- **scraper_status**: Health tracking per service
+- **scraper_status**: Legacy table (not used in extension sync flow)
 
 See `PROJECT_SPEC.md` for detailed schema.
 
@@ -201,7 +212,7 @@ See `PROJECT_SPEC.md` for detailed schema.
 - Extension uses your browser's existing authentication (no separate login)
 - Database stored locally in Docker volume (not cloud-synced)
 - Do NOT expose ports 8000/3000 externally without adding authentication
-- Extension only runs on claude.ai, gemini.google.com, chat.openai.com (limited host permissions)
+- Extension only runs on claude.ai, gemini.google.com, chat.openai.com, chatgpt.com (limited host permissions)
 
 ## 🚧 Development Status
 
@@ -234,7 +245,7 @@ See `PROJECT_SPEC.md` for detailed schema.
 This is a personal-use tool. If you find bugs or have improvements:
 
 1. Understand the phased implementation approach (see PROJECT_SPEC.md)
-2. Validate changes don't break existing scrapers
+2. Validate changes don't break existing extension sync flows
 3. Test session persistence after changes
 4. Update documentation
 

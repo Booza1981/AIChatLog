@@ -24,7 +24,7 @@ docker-compose up -d backend
 1. Open [Claude.ai](https://claude.ai) in a new tab
 2. Make sure you're logged in and can see your conversations
 3. Click the extension icon in your toolbar
-4. Click **"Sync Now"**
+4. Click **"Sync Current"**
 5. You should see a green "✓ Claude conversations synced" notification
 
 ### Step 4: View Your Data
@@ -76,8 +76,8 @@ docker-compose restart backend
 
 **Solutions**:
 1. Make sure you're on the right page:
-   - Claude: https://claude.ai (not claude.ai/chat/...)
-   - ChatGPT: https://chat.openai.com
+   - Claude: https://claude.ai/chat/...
+   - ChatGPT: https://chat.openai.com or https://chatgpt.com
 2. Wait for page to fully load
 3. Check browser console for errors (F12 → Console tab)
 
@@ -172,9 +172,7 @@ You can use any icon generator online or design your own.
 
 ## Next Steps
 
-1. **Test with Claude** - The Claude scraper is fully implemented
-2. **Implement ChatGPT** - Edit `content-scripts/chatgpt.js`
-3. **Implement Gemini** - Edit `content-scripts/gemini.js`
-4. **Customize** - Modify the popup UI, add features, etc.
+1. **Test with Claude/ChatGPT/Gemini** - All three are implemented
+2. **Customize** - Modify the popup UI, add features, etc.
 
 The extension architecture is simple and extensible!

@@ -7,7 +7,7 @@ Automatically syncs your AI chat conversations to your local database.
 - ✅ **Automatic syncing** - Runs every 2 hours (configurable)
 - ✅ **Multiple services** - Claude, ChatGPT, Gemini support
 - ✅ **Zero bot detection** - Runs in your real browser with real authentication
-- ✅ **Privacy first** - Data stays on your machine (localhost:8000)
+- ✅ **Privacy first** - Data stays on your machine (backend API)
 - ✅ **Manual trigger** - Click to sync anytime
 
 ## Installation
@@ -27,12 +27,14 @@ docker-compose up -d backend
 4. Select the `chrome-extension` folder
 5. The extension icon will appear in your toolbar
 
+**Server deployment (Chromium container):** the extension is baked into the Chromium image. After a stack redeploy, visit `chrome://extensions` in that browser and click reload if it doesn’t update automatically.
+
 ### 3. Configure
 
 1. Click the extension icon
 2. Enable services you want to sync
 3. Set sync interval (default: 2 hours)
-4. Click "Sync Now" to test
+4. Click "Sync Current" to test
 
 ## Usage
 
@@ -47,14 +49,14 @@ Once installed and configured, the extension will automatically:
 
 1. Navigate to claude.ai (or other supported service)
 2. Click the extension icon
-3. Click "Sync Now"
+3. Click "Sync Current"
 4. Check the dashboard at http://localhost:3000
 
 ## How It Works
 
 1. **Content Scripts** run on claude.ai, chat.openai.com, etc.
 2. **Extract conversations** directly from the DOM (real browser, no bot detection)
-3. **POST to localhost** API endpoint (`http://localhost:8000/api/import/claude`)
+3. **POST to backend** API endpoint (`/api/import/{service}`)
 4. **Backend saves** to SQLite database with FTS5 indexing
 
 ## Supported Services
@@ -62,8 +64,8 @@ Once installed and configured, the extension will automatically:
 | Service | Status | Notes |
 |---------|--------|-------|
 | Claude  | ✅ Implemented | Fully working |
-| ChatGPT | 🚧 Coming soon | Stub created |
-| Gemini  | 🚧 Coming soon | Stub created |
+| ChatGPT | ✅ Implemented | Fully working |
+| Gemini  | ✅ Implemented | Fully working |
 
 ## Development
 
@@ -90,7 +92,7 @@ Once installed and configured, the extension will automatically:
 
 ### "Failed to fetch" error
 - Ensure backend is running: `docker-compose ps`
-- Check backend URL: `curl http://localhost:8000/api/health`
+- Check backend URL: `curl http://localhost:8000/api/health` (or your server host port)
 
 ### No conversations found
 - Navigate to the conversations page (e.g., claude.ai/chats)
@@ -106,7 +108,7 @@ Once installed and configured, the extension will automatically:
 
 - All data stays on your local machine
 - No external servers involved
-- Extension only communicates with localhost:8000
+- Extension communicates with the backend API (localhost in dev, `backend:8000` in Docker)
 - Your authentication cookies stay in your browser
 
 ## License

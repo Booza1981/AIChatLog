@@ -4,7 +4,7 @@
 
 ## 🎯 Current Implementation: Chrome Extension + API Sync
 
-We **abandoned the Playwright approach** due to Cloudflare bot detection and switched to a **Chrome extension** that runs in the user's real browser.
+We **abandoned the Playwright approach** due to Cloudflare bot detection and switched to a **Chrome extension** that runs in the user's real browser. Playwright code and dependencies have been removed.
 
 ### ✅ What's Working
 
@@ -79,6 +79,12 @@ docker exec chat-history-backend sqlite3 /app/volumes/database/conversations.db 
 ```
 
 The extension successfully syncs all available conversations from both Claude and Gemini.
+
+## 🧭 Server Deployment Notes
+
+- The `chromium` service runs a browser with the extension preloaded.
+- Backend URL auto-detect prefers `http://backend:8000` inside Docker.
+- If you rebuild/redeploy, reload the extension in `chrome://extensions` if it doesn’t update automatically.
 
 ## 🏗️ Architecture Overview
 
