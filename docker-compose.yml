@@ -30,6 +30,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+      disable: true
     networks:
       - chat-history-net
 
