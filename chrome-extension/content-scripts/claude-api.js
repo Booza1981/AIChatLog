@@ -102,25 +102,23 @@ function convertClaudeAPIToDBFormat(apiConversation) {
   // Claude API returns chat_messages array
   if (apiConversation.chat_messages) {
     apiConversation.chat_messages.forEach((msg, index) => {
+      const { text, thinking } = extractClaudeMessageContent(msg);
+
       // Human messages
       if (msg.sender === 'human') {
         messages.push({
           role: 'user',
-          content: msg.text || '',
+          content: text || '',
           timestamp: msg.created_at || new Date().toISOString(),
           sequence_number: index
         });
       }
       // Assistant messages
       else if (msg.sender === 'assistant') {
-        // Content is in msg.content array
-        const content = msg.content
-          ? msg.content.map(c => c.text || '').join('\n')
-          : (msg.text || '');
-
         messages.push({
           role: 'assistant',
-          content: content,
+          content: text || '',
+          thinking: thinking || undefined,
           timestamp: msg.created_at || new Date().toISOString(),
           sequence_number: index
         });
@@ -135,5 +133,32 @@ function convertClaudeAPIToDBFormat(apiConversation) {
     created_at: apiConversation.created_at || new Date().toISOString(),
     updated_at: apiConversation.updated_at || new Date().toISOString(),
     messages: messages
+  };
+}
+
+function extractClaudeMessageContent(msg) {
+  const textParts = [];
+  const thinkingParts = [];
+
+  if (Array.isArray(msg.content)) {
+    msg.content.forEach((part) => {
+      if (part.type === 'thinking' && part.thinking) {
+        thinkingParts.push(part.thinking);
+        return;
+      }
+
+      if (part.text) {
+        textParts.push(part.text);
+      }
+    });
+  }
+
+  if (msg.text) {
+    textParts.push(msg.text);
+  }
+
+  return {
+    text: textParts.join('\n').trim(),
+    thinking: thinkingParts.join('\n').trim()
   };
 }
