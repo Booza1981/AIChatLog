@@ -63,7 +63,9 @@ services:
       - chat-history-net
 
   chromium:
-    image: lscr.io/linuxserver/chromium:latest
+    build:
+      context: .
+      dockerfile: chromium/Dockerfile
     container_name: chat-history-chromium
     security_opt:
       - seccomp:unconfined
@@ -71,12 +73,11 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=${TZ:-Etc/UTC}
-      - CHROME_CLI=--disable-dev-shm-usage --no-sandbox --disable-blink-features=AutomationControlled --disable-infobars --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --load-extension=/config/extension
+      - CHROME_CLI=--disable-dev-shm-usage --no-sandbox --disable-blink-features=AutomationControlled --disable-infobars --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --load-extension=/opt/extension
       - CUSTOM_USER=${BROWSER_USER:-admin}
       - PASSWORD=${BROWSER_PASSWORD:-changeme}
     volumes:
       - chromium-config:/config
-      - ./chrome-extension:/config/extension:ro
     ports:
       - "3700:3000"  # KasmVNC HTTP
       - "3701:3001"  # KasmVNC HTTPS
