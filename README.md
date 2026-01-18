@@ -238,6 +238,7 @@ See `PROJECT_SPEC.md` for detailed schema.
 
 **Known Issues:**
 - ⚠️ Perplexity not yet implemented (Claude, ChatGPT, and Gemini work!)
+- ⚠️ Gemini login in containerized Chromium doesn’t persist across redeploys yet
 
 **Next Steps:**
 - Add Perplexity API sync

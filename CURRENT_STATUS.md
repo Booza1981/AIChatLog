@@ -64,6 +64,12 @@ We **abandoned the Playwright approach** due to Cloudflare bot detection and swi
    - Claude, ChatGPT, and Gemini are working
    - Need to find Perplexity API endpoints
 
+2. **Gemini Login Does Not Persist in Chromium Container**
+   - Google sign-in succeeds but profile never shows as signed in; Gemini cookies don’t survive redeploys
+   - Cookies DB persists; issue appears specific to Google/Gemini
+   - Tried: persistent `/config`, disable `ClearSiteDataOnExit` and `DeviceBoundSessionCredentials`, bind host `/etc/machine-id` + `/var/lib/dbus/machine-id`
+   - Priority fix: stabilize Google session persistence in containerized Chromium
+
 ### ✅ Recently Fixed
 
 1. **Extension Only Works When DevTools Open** - FIXED 2026-01-11
@@ -345,6 +351,11 @@ docker logs chat-history-backend --tail 100 -f
    - `/api/recent` - Get most recent conversations (default 10, max 50)
 
 ## 🔜 Next Steps (For Next Chat)
+
+### Priority 0: Gemini Login Persistence (Chromium Container)
+- Determine why Google profile sign-in doesn’t attach or persist in container
+- Validate cookie key stability and session behavior across redeploys
+- Consider forcing keychain behavior or cookie policy for google/gemini domains
 
 ### Priority 1: Perplexity Support
 - Find Perplexity API endpoints
