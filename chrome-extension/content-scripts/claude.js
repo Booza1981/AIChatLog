@@ -526,7 +526,10 @@ function extractTitle() {
   // Try multiple selectors
   const selectors = [
     'h1',
+    'nav [aria-current="page"]',
+    'a[aria-current="page"]',
     '[data-testid="conversation-title"]',
+    '[data-testid="conversation-item"][aria-current="page"]',
     '.conversation-title',
     'header h1',
     'header h2'
@@ -537,6 +540,11 @@ function extractTitle() {
     if (element && element.textContent.trim()) {
       return element.textContent.trim();
     }
+  }
+
+  const docTitle = document.title?.trim();
+  if (docTitle) {
+    return docTitle.replace(/\s*\|\s*Claude.*$/i, '').trim();
   }
 
   return 'Untitled Conversation';
