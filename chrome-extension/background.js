@@ -52,13 +52,24 @@ async function fetchWithFallback(path, options) {
   let lastError = null;
   for (const apiBase of candidates) {
     try {
-      const response = await fetch(`${apiBase}${path}`, options || {});
-      if (apiBase !== preferred) {
-        await chrome.storage.sync.set({ apiBase });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      try {
+        const fetchOptions = { ...(options || {}), signal: controller.signal };
+        const response = await fetch(`${apiBase}${path}`, fetchOptions);
+        if (apiBase !== preferred) {
+          await chrome.storage.sync.set({ apiBase });
+        }
+        return response;
+      } finally {
+        clearTimeout(timeoutId);
       }
-      return response;
     } catch (error) {
-      lastError = error;
+      if (error.name === 'AbortError') {
+        lastError = new Error(`Timeout contacting ${apiBase}`);
+      } else {
+        lastError = new Error(`Fetch failed for ${apiBase}: ${error.message || error}`);
+      }
     }
   }
 
