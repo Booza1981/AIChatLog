@@ -123,10 +123,13 @@ async def get_stats():
 
 
 @app.get("/api/recent")
-async def get_recent_conversations(limit: int = Query(10, ge=1, le=50)):
+async def get_recent_conversations(
+    limit: int = Query(10, ge=1, le=50),
+    source: Optional[str] = Query(None, description="Filter by service")
+):
     """Get recent conversations."""
     try:
-        conversations = await db.get_recent_conversations(limit=limit)
+        conversations = await db.get_recent_conversations(limit=limit, source=source)
         return {"conversations": conversations}
     except Exception as e:
         logger.error(f"Recent conversations error: {e}", exc_info=True)

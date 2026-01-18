@@ -5,6 +5,20 @@
 
 const SYNC_INTERVAL = 2; // hours
 const API_BASE_CANDIDATES = ['http://backend:8000', 'http://localhost:8000'];
+const SERVICE_TABS = {
+  claude: {
+    url: 'https://claude.ai/chats',
+    patterns: ['https://claude.ai/*']
+  },
+  chatgpt: {
+    url: 'https://chatgpt.com/',
+    patterns: ['https://chatgpt.com/*', 'https://chat.openai.com/*']
+  },
+  gemini: {
+    url: 'https://gemini.google.com/',
+    patterns: ['https://gemini.google.com/*']
+  }
+};
 
 async function isApiHealthy(apiBase) {
   const controller = new AbortController();
@@ -81,6 +95,7 @@ async function fetchWithFallback(path, options) {
 chrome.runtime.onInstalled.addListener(async () => {
   const settings = await chrome.storage.sync.get({
     autoSync: true,
+    autoOpenTabs: true,
     syncInterval: SYNC_INTERVAL,
     enabledServices: {
       claude: true,
@@ -91,6 +106,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
   await chrome.storage.sync.set(settings);
   await ensureApiBase();
+  await ensureServiceTabs();
 
   if (settings.autoSync) {
     scheduleSync(settings.syncInterval);
@@ -99,6 +115,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.runtime.onStartup.addListener(async () => {
   await ensureApiBase();
+  await ensureServiceTabs();
 });
 
 // Schedule periodic sync
@@ -107,6 +124,33 @@ function scheduleSync(intervalHours) {
   chrome.alarms.create('autoSync', {
     periodInMinutes: intervalHours * 60
   });
+}
+
+async function ensureServiceTabs() {
+  const settings = await chrome.storage.sync.get({
+    autoOpenTabs: true,
+    enabledServices: {
+      claude: true,
+      chatgpt: true,
+      gemini: true
+    }
+  });
+
+  if (!settings.autoOpenTabs) {
+    return;
+  }
+
+  for (const [service, config] of Object.entries(SERVICE_TABS)) {
+    if (!settings.enabledServices[service]) {
+      continue;
+    }
+
+    const tabs = await chrome.tabs.query({ url: config.patterns });
+
+    if (tabs.length === 0) {
+      await chrome.tabs.create({ url: config.url });
+    }
+  }
 }
 
 // Handle alarm triggers

@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadSettings() {
   const settings = await chrome.storage.sync.get({
     autoSync: true,
+    autoOpenTabs: true,
     syncInterval: 2,
     enabledServices: {
       claude: true,
@@ -31,6 +32,11 @@ async function loadSettings() {
 
   // Set sync interval
   document.getElementById('syncInterval').value = settings.syncInterval;
+
+  const autoOpenCheckbox = document.getElementById('autoOpenTabs');
+  if (autoOpenCheckbox) {
+    autoOpenCheckbox.checked = settings.autoOpenTabs;
+  }
 }
 
 // Load last sync times for each service
@@ -65,6 +71,11 @@ function setupEventListeners() {
   });
 
   document.getElementById('syncInterval').addEventListener('change', handleIntervalChange);
+
+  const autoOpenCheckbox = document.getElementById('autoOpenTabs');
+  if (autoOpenCheckbox) {
+    autoOpenCheckbox.addEventListener('change', handleAutoOpenChange);
+  }
 }
 
 // Handle manual sync
@@ -164,6 +175,11 @@ async function handleIntervalChange(event) {
     action: 'updateSchedule',
     interval: interval
   });
+}
+
+async function handleAutoOpenChange(event) {
+  const enabled = event.target.checked;
+  await chrome.storage.sync.set({ autoOpenTabs: enabled });
 }
 
 // Show status message

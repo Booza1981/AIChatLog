@@ -45,23 +45,23 @@
 
             <!-- Stats Summary -->
             <div id="statsCard" class="stats-card" style="display: none;">
-                <div class="stat-item">
+                <div class="stat-item" data-service="">
                     <span class="stat-value" id="statTotal">0</span>
                     <span class="stat-label">Total Conversations</span>
                 </div>
-                <div class="stat-item">
+                <div class="stat-item" data-service="claude">
                     <span class="stat-value" id="statClaude">0</span>
                     <span class="stat-label">Claude</span>
                 </div>
-                <div class="stat-item">
+                <div class="stat-item" data-service="chatgpt">
                     <span class="stat-value" id="statChatGPT">0</span>
                     <span class="stat-label">ChatGPT</span>
                 </div>
-                <div class="stat-item">
+                <div class="stat-item" data-service="gemini">
                     <span class="stat-value" id="statGemini">0</span>
                     <span class="stat-label">Gemini</span>
                 </div>
-                <div class="stat-item">
+                <div class="stat-item" data-service="perplexity">
                     <span class="stat-value" id="statPerplexity">0</span>
                     <span class="stat-label">Perplexity</span>
                 </div>
@@ -117,6 +117,8 @@
             return urls[source.toLowerCase()] || '#';
         }
 
+        let recentSourceFilter = '';
+
         // Load stats on page load
         async function loadStats() {
             try {
@@ -132,15 +134,27 @@
                 if (stats.total_conversations > 0) {
                     document.getElementById('statsCard').style.display = 'flex';
                 }
+
+                document.querySelectorAll('.stat-item').forEach((item) => {
+                    item.addEventListener('click', () => {
+                        const source = item.dataset.service || '';
+                        setRecentFilter(source);
+                        document.getElementById('serviceFilter').value = source;
+                    });
+                });
             } catch (error) {
                 console.error('Error loading stats:', error);
             }
         }
 
         // Load recent conversations
-        async function loadRecentChats() {
+        async function loadRecentChats(source = '') {
             try {
-                const response = await fetch(`${API_BASE}/recent?limit=15`);
+                const params = new URLSearchParams({ limit: '15' });
+                if (source) {
+                    params.set('source', source);
+                }
+                const response = await fetch(`${API_BASE}/recent?${params.toString()}`);
                 const data = await response.json();
 
                 const recentList = document.getElementById('recentList');
@@ -148,7 +162,7 @@
                 if (data.conversations.length === 0) {
                     recentList.innerHTML = `
                         <div class="empty-state">
-                            <p>No conversations yet. Use the Chrome extension to sync your chats!</p>
+                            <p>No conversations yet${source ? ` for ${source}` : ''}. Use the Chrome extension to sync your chats!</p>
                         </div>
                     `;
                     return;
@@ -202,6 +216,17 @@
                     </div>
                 `;
             }
+        }
+
+        function setRecentFilter(source) {
+            recentSourceFilter = source;
+            document.querySelectorAll('.stat-item').forEach((item) => {
+                const match = (item.dataset.service || '') === source;
+                item.classList.toggle('active', match);
+            });
+            const label = source ? `(${source})` : '';
+            document.querySelector('#recentChats .section-title').textContent = `Recent Conversations ${label}`.trim();
+            loadRecentChats(source);
         }
 
         // Search function

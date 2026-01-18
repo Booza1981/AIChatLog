@@ -416,23 +416,44 @@ class Database:
             cursor.row_factory = aiosqlite.Row
             return [dict(row) async for row in cursor]
 
-    async def get_recent_conversations(self, limit: int = 10) -> List[Dict]:
-        """Get recent conversations ordered by updated_at."""
-        async with self.db.execute(
-            '''
-            SELECT
-                id,
-                conversation_id,
-                source,
-                title,
-                created_at,
-                updated_at,
-                message_count
-            FROM conversations
-            ORDER BY updated_at DESC
-            LIMIT ?
-            ''',
-            (limit,)
-        ) as cursor:
+    async def get_recent_conversations(self, limit: int = 10, source: Optional[str] = None) -> List[Dict]:
+        """Get recent conversations ordered by updated_at, optionally filtered by source."""
+        if source:
+            query = (
+                '''
+                SELECT
+                    id,
+                    conversation_id,
+                    source,
+                    title,
+                    created_at,
+                    updated_at,
+                    message_count
+                FROM conversations
+                WHERE source = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+                '''
+            )
+            params = (source, limit)
+        else:
+            query = (
+                '''
+                SELECT
+                    id,
+                    conversation_id,
+                    source,
+                    title,
+                    created_at,
+                    updated_at,
+                    message_count
+                FROM conversations
+                ORDER BY updated_at DESC
+                LIMIT ?
+                '''
+            )
+            params = (limit,)
+
+        async with self.db.execute(query, params) as cursor:
             cursor.row_factory = aiosqlite.Row
             return [dict(row) async for row in cursor]
