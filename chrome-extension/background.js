@@ -5,6 +5,11 @@
 
 const SYNC_INTERVAL = 2; // hours
 
+async function getApiBase() {
+  const result = await chrome.storage.sync.get({ apiBase: 'http://localhost:8000' });
+  return result.apiBase || 'http://localhost:8000';
+}
+
 // Initialize extension
 chrome.runtime.onInstalled.addListener(async () => {
   const settings = await chrome.storage.sync.get({
@@ -73,6 +78,30 @@ function detectService(url) {
 
 // Single unified message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'apiFetch') {
+    (async () => {
+      try {
+        const apiBase = await getApiBase();
+        const response = await fetch(`${apiBase}${request.path}`, request.options || {});
+        const body = await response.text();
+        const headers = {};
+        response.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+        sendResponse({
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+          body
+        });
+      } catch (error) {
+        sendResponse({ error: error.message || String(error) });
+      }
+    })();
+    return true;
+  }
+
   // Handle syncComplete from content scripts
   if (request.action === 'syncComplete') {
     chrome.storage.local.set({
