@@ -8,7 +8,7 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./volumes/browser-profiles:/app/volumes/browser-profiles
-      - ./volumes/database:/app/volumes/database
+      - ${DATABASE_VOLUME_PATH:-./volumes/database}:/app/volumes/database
     environment:
       - SCRAPE_INTERVAL_HOURS=${SCRAPE_INTERVAL_HOURS:-2}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
