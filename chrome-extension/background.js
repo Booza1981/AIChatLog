@@ -3,7 +3,6 @@
  * Handles automatic syncing on a schedule
  */
 
-const API_BASE = 'http://localhost:8000';
 const SYNC_INTERVAL = 2; // hours
 
 // Initialize extension

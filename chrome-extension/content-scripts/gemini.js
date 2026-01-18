@@ -12,7 +12,6 @@
  */
 
 const SERVICE = 'gemini';
-const API_BASE = 'http://localhost:8000';
 
 // Listen for sync requests from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -66,13 +65,14 @@ async function performSync() {
 
     // Check if backend is reachable
     try {
-      const healthCheck = await fetch(`${API_BASE}/api/health`);
+      const healthCheck = await apiFetch('/api/health');
       if (!healthCheck.ok) {
         throw new Error(`Backend not healthy (status: ${healthCheck.status}). Make sure Docker is running.`);
       }
       console.log('[Gemini] Backend is healthy');
     } catch (e) {
-      throw new Error(`Cannot reach backend at ${API_BASE}. Make sure Docker containers are running: docker-compose up -d`);
+      const apiBase = await getApiBase();
+      throw new Error(`Cannot reach backend at ${apiBase}. Make sure Docker containers are running: docker-compose up -d`);
     }
 
     // Extract current conversation
@@ -85,7 +85,7 @@ async function performSync() {
     console.log(`[Gemini] Extracted conversation with ${conversation.messages.length} messages`);
 
     // Send to backend
-    const response = await fetch(`${API_BASE}/api/import/gemini`, {
+    const response = await apiFetch('/api/import/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversations: [conversation] })
@@ -481,7 +481,7 @@ async function performSyncAll() {
         console.log(`[Gemini] Fetched conversation: ${dbConversation.title} (${dbConversation.messages.length} messages)`);
 
         // Send to backend
-        const response = await fetch(`${API_BASE}/api/import/gemini`, {
+        const response = await apiFetch('/api/import/gemini', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conversations: [dbConversation] })
@@ -603,7 +603,7 @@ async function performSyncQuick() {
     showNotification(`Checking ${checkPayload.length} conversations...`, 'info');
 
     // Check with backend which conversations need syncing
-    const checkResponse = await fetch(`${API_BASE}/api/conversations/check`, {
+    const checkResponse = await apiFetch('/api/conversations/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversations: checkPayload })
@@ -677,7 +677,7 @@ async function performSyncQuick() {
         const dbConversation = convertGeminiAPIToDBFormat(fullConversation, convId, convTitle);
 
         // Send to backend
-        const response = await fetch(`${API_BASE}/api/import/gemini`, {
+        const response = await apiFetch('/api/import/gemini', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conversations: [dbConversation] })

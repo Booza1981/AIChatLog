@@ -3,8 +3,6 @@
  * Intercepts ALL console.log/error/warn and sends to backend
  */
 
-const BACKEND_URL = 'http://localhost:8000';
-
 // Override console methods
 const originalLog = console.log;
 const originalError = console.error;
@@ -23,7 +21,7 @@ function sendLogToBackend(level, args) {
   }).join(' ');
 
   // Send to backend (non-blocking)
-  fetch(`${BACKEND_URL}/api/auto-log`, {
+  apiFetch('/api/auto-log', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

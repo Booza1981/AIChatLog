@@ -17,8 +17,12 @@ async function debugLog(message, data = null) {
   console.log(`[DEBUG] ${message}`, data || '');
 
   // Send to backend to write to file
+  const request = typeof apiFetch === 'function'
+    ? apiFetch
+    : (path, options) => fetch(`http://localhost:8000${path}`, options);
+
   try {
-    await fetch('http://localhost:8000/api/debug-log', {
+    await request('/api/debug-log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(logEntry)

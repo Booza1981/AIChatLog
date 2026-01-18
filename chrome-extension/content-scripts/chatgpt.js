@@ -9,7 +9,6 @@
  */
 
 const SERVICE = 'chatgpt';
-const API_BASE = 'http://localhost:8000';
 
 // Listen for sync requests from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -55,7 +54,7 @@ async function performSync() {
 
     // Check if backend is reachable
     try {
-      const healthCheck = await fetch(`${API_BASE}/api/health`);
+      const healthCheck = await apiFetch('/api/health');
       if (!healthCheck.ok) {
         throw new Error('Backend not healthy');
       }
@@ -71,7 +70,7 @@ async function performSync() {
       const apiConversation = await fetchConversationMessages(conversationId);
       const dbConversation = convertChatGPTAPIToDBFormat(apiConversation);
 
-      const response = await fetch(`${API_BASE}/api/import/chatgpt`, {
+      const response = await apiFetch('/api/import/chatgpt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversations: [dbConversation] })
@@ -92,7 +91,7 @@ async function performSync() {
         throw new Error('No conversation to sync');
       }
 
-      const response = await fetch(`${API_BASE}/api/import/chatgpt`, {
+      const response = await apiFetch('/api/import/chatgpt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversations: [conversation] })
@@ -167,7 +166,7 @@ async function performSyncAll() {
         const fullConversation = await fetchConversationMessages(convId);
         const dbConversation = convertChatGPTAPIToDBFormat(fullConversation);
 
-        const response = await fetch(`${API_BASE}/api/import/chatgpt`, {
+        const response = await apiFetch('/api/import/chatgpt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conversations: [dbConversation] })
@@ -253,7 +252,7 @@ async function performSyncQuick() {
     })).filter(item => item.conversation_id);
 
     // Check with backend which need syncing
-    const checkResponse = await fetch(`${API_BASE}/api/conversations/check`, {
+    const checkResponse = await apiFetch('/api/conversations/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversations: checkPayload })
@@ -312,7 +311,7 @@ async function performSyncQuick() {
         const fullConversation = await fetchConversationMessages(convId);
         const dbConversation = convertChatGPTAPIToDBFormat(fullConversation);
 
-        const response = await fetch(`${API_BASE}/api/import/chatgpt`, {
+        const response = await apiFetch('/api/import/chatgpt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conversations: [dbConversation] })
