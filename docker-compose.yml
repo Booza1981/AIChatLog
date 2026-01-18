@@ -5,7 +5,7 @@ services:
     build: ./backend
     container_name: chat-history-backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./volumes/browser-profiles:/app/volumes/browser-profiles
       - ./volumes/database:/app/volumes/database
