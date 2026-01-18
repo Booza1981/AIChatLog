@@ -4,10 +4,45 @@
  */
 
 const SYNC_INTERVAL = 2; // hours
+const API_BASE_CANDIDATES = ['http://backend:8000', 'http://localhost:8000'];
+
+async function isApiHealthy(apiBase) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+  try {
+    const response = await fetch(`${apiBase}/api/health`, { signal: controller.signal });
+    return response.ok;
+  } catch (error) {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function ensureApiBase() {
+  const result = await chrome.storage.sync.get(['apiBase']);
+  if (result.apiBase) {
+    return;
+  }
+
+  for (const apiBase of API_BASE_CANDIDATES) {
+    if (await isApiHealthy(apiBase)) {
+      await chrome.storage.sync.set({ apiBase });
+      return;
+    }
+  }
+}
 
 async function getApiBase() {
-  const result = await chrome.storage.sync.get({ apiBase: 'http://localhost:8000' });
-  return result.apiBase || 'http://localhost:8000';
+  const result = await chrome.storage.sync.get(['apiBase']);
+  if (result.apiBase) {
+    return result.apiBase;
+  }
+
+  await ensureApiBase();
+  const updated = await chrome.storage.sync.get({ apiBase: 'http://localhost:8000' });
+  return updated.apiBase || 'http://localhost:8000';
 }
 
 // Initialize extension
@@ -23,10 +58,15 @@ chrome.runtime.onInstalled.addListener(async () => {
   });
 
   await chrome.storage.sync.set(settings);
+  await ensureApiBase();
 
   if (settings.autoSync) {
     scheduleSync(settings.syncInterval);
   }
+});
+
+chrome.runtime.onStartup.addListener(async () => {
+  await ensureApiBase();
 });
 
 // Schedule periodic sync
