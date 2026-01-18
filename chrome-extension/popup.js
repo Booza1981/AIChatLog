@@ -51,36 +51,19 @@ async function loadLastSyncTimes() {
 
 // Setup event listeners
 function setupEventListeners() {
-  // Sync now button
   const syncNowBtn = document.getElementById('syncNow');
-  console.log('[Popup Setup] syncNow button:', syncNowBtn);
-  if (syncNowBtn) {
-    syncNowBtn.addEventListener('click', handleSyncNow);
-    console.log('[Popup Setup] Attached handleSyncNow');
-  }
+  if (syncNowBtn) syncNowBtn.addEventListener('click', handleSyncNow);
 
-  // Quick sync button
   const syncQuickBtn = document.getElementById('syncQuick');
-  console.log('[Popup Setup] syncQuick button:', syncQuickBtn);
-  if (syncQuickBtn) {
-    syncQuickBtn.addEventListener('click', handleSyncQuick);
-    console.log('[Popup Setup] Attached handleSyncQuick');
-  }
+  if (syncQuickBtn) syncQuickBtn.addEventListener('click', handleSyncQuick);
 
-  // Sync all button
   const syncAllBtn = document.getElementById('syncAll');
-  console.log('[Popup Setup] syncAll button:', syncAllBtn);
-  if (syncAllBtn) {
-    syncAllBtn.addEventListener('click', handleSyncAll);
-    console.log('[Popup Setup] Attached handleSyncAll');
-  }
+  if (syncAllBtn) syncAllBtn.addEventListener('click', handleSyncAll);
 
-  // Service toggles
   document.querySelectorAll('.service-toggle').forEach(toggle => {
     toggle.addEventListener('click', handleToggleService);
   });
 
-  // Sync interval change
   document.getElementById('syncInterval').addEventListener('change', handleIntervalChange);
 }
 
@@ -113,89 +96,42 @@ async function handleSyncNow() {
 
 // Handle quick sync (incremental)
 async function handleSyncQuick(event) {
-  // Prevent default
-  if (event) {
-    event.preventDefault();
-  }
+  if (event) event.preventDefault();
 
-  console.log('[Popup] Quick Sync button clicked');
-  const button = document.getElementById('syncQuick');
-
-  // Detect which service based on active tab
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   let serviceName = 'Claude';
   if (activeTab.url.includes('gemini.google.com')) {
     serviceName = 'Gemini';
-  } else if (activeTab.url.includes('chat.openai.com')) {
+  } else if (activeTab.url.includes('chatgpt.com') || activeTab.url.includes('chat.openai.com')) {
     serviceName = 'ChatGPT';
   }
 
-  // Confirm action FIRST (before disabling button)
-  const confirmed = confirm(`Quick Sync will check all ${serviceName} conversations and only sync new or updated ones.\\n\\nThis is much faster than "Sync All". Continue?`);
+  const confirmed = confirm(`Quick Sync will check all ${serviceName} conversations and only sync new or updated ones.\n\nThis is much faster than "Sync All". Continue?`);
+  if (!confirmed) return;
 
-  if (!confirmed) {
-    console.log('[Popup] User cancelled');
-    return;
-  }
-
-  // Send message to background
-  console.log('[Popup] Sending triggerSyncQuick to background...');
-
-  chrome.runtime.sendMessage({
-    action: 'triggerSyncQuick'
-  });
-
-  // Show quick message and close popup
+  chrome.runtime.sendMessage({ action: 'triggerSyncQuick' });
   showStatus('✓ Starting quick sync...', 'success');
-
-  // Close popup after brief delay
-  setTimeout(() => {
-    window.close();
-  }, 500);
+  setTimeout(() => window.close(), 500);
 }
 
 // Handle sync all conversations
 async function handleSyncAll(event) {
-  // Prevent default
-  if (event) {
-    event.preventDefault();
-  }
+  if (event) event.preventDefault();
 
-  console.log('[Popup] Sync All button clicked');
-  const button = document.getElementById('syncAll');
-
-  // Detect which service based on active tab
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   let serviceName = 'Claude';
   if (activeTab.url.includes('gemini.google.com')) {
     serviceName = 'Gemini';
-  } else if (activeTab.url.includes('chat.openai.com')) {
+  } else if (activeTab.url.includes('chatgpt.com') || activeTab.url.includes('chat.openai.com')) {
     serviceName = 'ChatGPT';
   }
 
-  // Confirm action FIRST (before disabling button)
-  const confirmed = confirm(`This will sync ALL conversations from ${serviceName}.\n\nThis will use the API to fetch all conversations.\n\nThis may take several minutes. Continue?`);
+  const confirmed = confirm(`This will sync ALL conversations from ${serviceName}.\n\nThis may take several minutes. Continue?`);
+  if (!confirmed) return;
 
-  if (!confirmed) {
-    console.log('[Popup] User cancelled');
-    return;
-  }
-
-  // Just send message to background - let it handle everything
-  // This way popup can close immediately without breaking the sync
-  console.log('[Popup] Sending triggerSyncAll to background...');
-
-  chrome.runtime.sendMessage({
-    action: 'triggerSyncAll'
-  });
-
-  // Show quick message and close popup
+  chrome.runtime.sendMessage({ action: 'triggerSyncAll' });
   showStatus('✓ Starting sync...', 'success');
-
-  // Close popup after brief delay
-  setTimeout(() => {
-    window.close();
-  }, 500);
+  setTimeout(() => window.close(), 500);
 }
 
 // Handle service toggle

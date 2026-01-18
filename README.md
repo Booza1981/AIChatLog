@@ -62,10 +62,10 @@ chrome://extensions/
 
 #### 3. Sync Your Conversations
 
-1. Open https://claude.ai or https://gemini.google.com in Chrome (log in normally)
+1. Open https://claude.ai, https://chatgpt.com, or https://gemini.google.com in Chrome (log in normally)
 2. Click the extension icon in your toolbar
-3. Click "Sync All Conversations"
-4. Wait for sync to complete (watch console with F12 for progress)
+3. Click "Sync All" or "Quick Sync" (incremental)
+4. Wait for sync to complete (progress shown in on-page notification)
 
 **Tip:** The sync runs in the background. You can continue browsing while it completes.
 
@@ -109,6 +109,8 @@ AIChatLog/
 │   └── content-scripts/
 │       ├── claude.js            # Claude sync
 │       ├── claude-api.js
+│       ├── chatgpt.js           # ChatGPT sync
+│       ├── chatgpt-api.js
 │       ├── gemini.js            # Gemini sync
 │       └── gemini-api.js
 ├── backend/                     # FastAPI server (Docker)
@@ -210,8 +212,9 @@ See `PROJECT_SPEC.md` for detailed schema.
 - ✅ **Modern frontend with recent conversations display**
 - ✅ **Dual link system** - Open in Claude.ai/Gemini OR view local archive
 - ✅ **Chrome extension with Claude API integration** - Full sync of all conversations
+- ✅ **Chrome extension with ChatGPT API integration** - Full sync with bearer token auth
 - ✅ **Chrome extension with Gemini API integration** - Full sync with pagination
-- ✅ **Gemini pagination** - Continuation token approach for complete history
+- ✅ **Smart incremental sync** - Quick Sync only fetches new/updated conversations
 - ✅ **Multiple message exchanges** - Full conversation history per chat
 - ✅ **Chronological message ordering** - Proper oldest-to-newest sorting
 - ✅ Progress tracking and notifications
@@ -219,12 +222,10 @@ See `PROJECT_SPEC.md` for detailed schema.
 - ✅ Responsive mobile-friendly UI
 
 **Known Issues:**
-- ⚠️ ChatGPT and Perplexity not yet implemented (Claude and Gemini work perfectly!)
+- ⚠️ Perplexity not yet implemented (Claude, ChatGPT, and Gemini work!)
 
 **Next Steps:**
-- Add ChatGPT API sync
 - Add Perplexity API sync
-- Enable auto-sync scheduling
 - Add conversation tagging
 - Enhanced search filters
 
@@ -250,22 +251,21 @@ This is a personal-use tool. If you find bugs or have improvements:
 ### Completed
 - [x] Chrome extension with Manifest V3
 - [x] Claude sync with API interception
+- [x] ChatGPT sync with bearer token auth
 - [x] Gemini sync with batchexecute API
 - [x] FastAPI backend with SQLite + FTS5
 - [x] Full-text search with highlighting
 - [x] Recent conversations display
 - [x] Auto-sync background service worker
+- [x] Smart incremental sync (Quick Sync)
 
 ### In Progress
-- [ ] ChatGPT sync implementation
 - [ ] Perplexity sync implementation
-- [ ] Incremental sync (Quick Sync feature)
 
 ### Future
 - [ ] Export functionality
 - [ ] Advanced search filters
 - [ ] Conversation tagging
-- [ ] Improved UI/UX
 
 ## 📄 License
 

@@ -1,6 +1,6 @@
 # Current Status - Chat History Search System
 
-**Last Updated:** 2026-01-12
+**Last Updated:** 2026-01-18
 
 ## 🎯 Current Implementation: Chrome Extension + API Sync
 
@@ -38,7 +38,16 @@ We **abandoned the Playwright approach** due to Cloudflare bot detection and swi
    - ✅ Full sync ("Sync All Conversations")
    - ✅ No page navigation needed - all via API calls
 
-4. **Chrome Extension - Gemini Integration** ✨ NEW
+4. **Chrome Extension - ChatGPT Integration** ✨ NEW
+   - ✅ **API-based sync** - Uses ChatGPT's backend-api endpoints
+   - ✅ **Token interceptor** - Captures bearer token from fetch/XHR in MAIN world
+   - ✅ **Full sync** - Syncs all conversations via `/backend-api/conversations`
+   - ✅ **Quick sync** - Smart incremental sync (only new/updated)
+   - ✅ **Custom headers** - oai-device-id, oai-language, oai-client-build-number
+   - ✅ **Tree structure parsing** - Handles ChatGPT's message mapping format
+   - ✅ **Supports chatgpt.com and chat.openai.com**
+
+5. **Chrome Extension - Gemini Integration**
    - ✅ **API-based sync** - Uses Google's batchexecute API
    - ✅ **XHR interceptor** - Captures tokens in MAIN world at document_start
    - ✅ **Pagination working** - Syncs all conversations (hundreds+)
@@ -51,9 +60,9 @@ We **abandoned the Playwright approach** due to Cloudflare bot detection and swi
 
 ### ⚠️ Known Issues
 
-1. **ChatGPT & Perplexity Not Implemented**
-   - Only Claude and Gemini are working
-   - Need to find their API endpoints (same approach)
+1. **Perplexity Not Implemented**
+   - Claude, ChatGPT, and Gemini are working
+   - Need to find Perplexity API endpoints
 
 ### ✅ Recently Fixed
 
@@ -126,7 +135,39 @@ The extension uses Claude's internal API (discovered by inspecting network reque
    - POST to `/api/import/claude`
    - Backend saves to SQLite
 
-### Gemini Sync ✨ NEW
+### ChatGPT Sync ✨ NEW
+
+The extension uses ChatGPT's backend-api (requires bearer token):
+
+1. **Capture Token via Fetch/XHR Interceptor**
+   ```javascript
+   // chatgpt-token-interceptor.js runs in MAIN world at document_start
+   // Intercepts fetch and XHR to capture Authorization header
+   // Stores token in hidden DOM element for content script access
+   ```
+
+2. **Get ALL Conversations**
+   ```javascript
+   GET https://chatgpt.com/backend-api/conversations?offset=0&limit=100&order=updated
+   Headers: Authorization: Bearer {token}, oai-device-id, oai-language
+   → Returns: { items: [...], total: N }
+   → Paginate with offset until all fetched
+   ```
+
+3. **Get Full Conversation with Messages**
+   ```javascript
+   GET https://chatgpt.com/backend-api/conversation/{id}
+   → Returns: { mapping: { msg-id: { message, parent, children } }, current_node }
+   → Traverse tree from current_node back to root for message order
+   ```
+
+4. **Convert & Save**
+   - Parse tree structure (mapping object with parent/child references)
+   - Extract messages from content.parts array
+   - Convert Unix timestamps to ISO format
+   - POST to `/api/import/chatgpt`
+
+### Gemini Sync
 
 The extension uses Google's batchexecute API (more complex than Claude):
 
@@ -216,8 +257,14 @@ Open http://localhost:3000 and search!
   - `popup.html` - UI
   - `popup.js` - Popup logic
   - `background.js` - Background service worker
-  - `content-scripts/claude-api.js` - Claude API client **[NEW]**
-  - `content-scripts/claude.js` - Main sync logic
+  - `content-scripts/claude-api.js` - Claude API client
+  - `content-scripts/claude.js` - Claude sync logic
+  - `content-scripts/chatgpt-api.js` - ChatGPT API client **[NEW]**
+  - `content-scripts/chatgpt.js` - ChatGPT sync logic **[NEW]**
+  - `chatgpt-token-interceptor.js` - Token capture (MAIN world) **[NEW]**
+  - `chatgpt-sync-state-manager.js` - Incremental sync state **[NEW]**
+  - `content-scripts/gemini-api.js` - Gemini API client
+  - `content-scripts/gemini.js` - Gemini sync logic
   - `auto-logger.js` - Console logging to backend
 
 ### Backend Files
@@ -293,27 +340,19 @@ docker logs chat-history-backend --tail 100 -f
 
 ## 🔜 Next Steps (For Next Chat)
 
-### Priority 1: ChatGPT Support
-- Find ChatGPT API endpoints (inspect network requests)
-- Implement API client in extension
-- Test sync functionality
-- Add pagination support if needed
-
-### Priority 2: Perplexity Support
+### Priority 1: Perplexity Support
 - Find Perplexity API endpoints
 - Implement API client in extension
 - Test sync functionality
 
-### Priority 3: Auto-Sync Scheduling
-- Currently manual sync only
-- Implement periodic background sync
-- Set reasonable interval (e.g., every 4 hours)
-- Add UI to enable/disable auto-sync
-
-### Priority 4: Enhanced Search
+### Priority 2: Enhanced Search
 - Add conversation tagging
 - Filter by date ranges in UI
 - Search within specific conversations
+
+### Priority 3: Export Functionality
+- Export conversations to markdown/JSON
+- Backup/restore database
 
 ## 📚 Key Learnings
 
@@ -341,15 +380,14 @@ docker logs chat-history-backend --tail 100 -f
 - [x] Automatic debugging logs
 - [x] **Full sync works without DevTools** ← FIXED!
 - [x] **Claude full sync working** ← WORKING!
+- [x] **ChatGPT full sync working** ← NEW!
 - [x] **Gemini full sync working** ← WORKING!
-- [x] **Gemini pagination working** ← NEW!
+- [x] **Smart incremental sync** ← NEW!
 - [x] **Recent chats display on main page** ← DONE!
-- [x] **External links to Claude.ai/Gemini** ← DONE!
+- [x] **External links to Claude.ai/ChatGPT/Gemini** ← DONE!
 - [x] Search returns accurate results
-- [ ] ChatGPT support added
 - [ ] Perplexity support added
-- [ ] Auto-sync scheduling
 
 ---
 
-**For next chat:** System fully operational! Claude and Gemini syncing perfectly with full pagination support. Continuation token approach working. Next priorities: Add ChatGPT and Perplexity support.
+**For next chat:** System fully operational! Claude, ChatGPT, and Gemini all syncing perfectly. Smart incremental sync (Quick Sync) implemented for all services. Next priority: Add Perplexity support.

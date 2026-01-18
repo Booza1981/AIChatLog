@@ -42,7 +42,7 @@ function getDeviceId() {
     return deviceId;
   }
 
-  // Method 1: Try to extract from page HTML (DeviceId in embedded JSON)
+  // Method 1: Try to extract from page HTML
   try {
     const pageContent = document.documentElement.innerHTML;
     const patterns = [
@@ -55,29 +55,22 @@ function getDeviceId() {
       const match = pageContent.match(pattern);
       if (match) {
         deviceId = cleanDeviceId(match[1]);
-        console.log('[ChatGPT API] Found device ID in page:', deviceId);
         return deviceId;
       }
     }
-  } catch (e) {
-    console.warn('[ChatGPT API] Failed to extract device ID from page:', e);
-  }
+  } catch (e) { /* ignore */ }
 
-  // Method 2: Try to get from localStorage (ChatGPT stores it there)
+  // Method 2: Try localStorage
   try {
-    // ChatGPT may store it under various keys
     const keys = ['oai-did', 'STATSIG_LOCAL_STORAGE_STABLE_ID'];
     for (const key of keys) {
       const stored = localStorage.getItem(key);
       if (stored) {
         deviceId = cleanDeviceId(stored);
-        console.log('[ChatGPT API] Found device ID in localStorage:', deviceId);
         return deviceId;
       }
     }
-  } catch (e) {
-    console.warn('[ChatGPT API] localStorage not accessible');
-  }
+  } catch (e) { /* ignore */ }
 
   // Method 3: Check cookies
   try {
@@ -86,17 +79,13 @@ function getDeviceId() {
       const [name, value] = cookie.trim().split('=');
       if (name === 'oai-did' && value) {
         deviceId = cleanDeviceId(decodeURIComponent(value));
-        console.log('[ChatGPT API] Found device ID in cookie:', deviceId);
         return deviceId;
       }
     }
-  } catch (e) {
-    console.warn('[ChatGPT API] Failed to check cookies');
-  }
+  } catch (e) { /* ignore */ }
 
-  // Fallback: Generate a new one (less ideal but necessary)
+  // Fallback: Generate a new one
   deviceId = crypto.randomUUID();
-  console.log('[ChatGPT API] Generated new device ID:', deviceId);
   return deviceId;
 }
 
@@ -121,28 +110,42 @@ function getBuildNumber() {
   return '4195295';
 }
 
+// Get access token from DOM element (set by token interceptor in MAIN world)
+function getAccessToken() {
+  try {
+    const tokenEl = document.getElementById('__chatgpt_token__');
+    if (tokenEl && tokenEl.textContent) {
+      const token = tokenEl.textContent.trim();
+      if (token.length > 50) return token;
+    }
+  } catch (e) {
+    // Token not available
+  }
+  return null;
+}
+
 /**
  * Make authenticated API request
  * ChatGPT uses cookie-based authentication with custom headers
+ * Some endpoints also require a bearer token
  */
 async function chatGPTFetch(endpoint, options = {}) {
   const deviceIdValue = getDeviceId();
   const buildNumber = getBuildNumber();
-
-  // Debug: Log the raw values
-  console.log('[ChatGPT API] Device ID value:', deviceIdValue, 'Type:', typeof deviceIdValue);
-  console.log('[ChatGPT API] Build number:', buildNumber);
+  const accessToken = getAccessToken();
 
   const headers = {
     'Content-Type': 'application/json',
     'oai-device-id': deviceIdValue,
     'oai-language': 'en-US',
     'oai-client-build-number': buildNumber,
+    'oai-client-version': 'prod',
     ...options.headers
   };
 
-  // Debug: Log the full headers object
-  console.log('[ChatGPT API] Request headers:', JSON.stringify(headers, null, 2));
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
 
   const response = await fetch(`${CHATGPT_API_BASE}${endpoint}`, {
     ...options,
@@ -150,7 +153,6 @@ async function chatGPTFetch(endpoint, options = {}) {
     headers
   });
 
-  console.log('[ChatGPT API] Response status:', response.status);
   return response;
 }
 
@@ -166,9 +168,6 @@ async function fetchAllConversationsViaAPI(options = {}) {
     stopAtConversationId = null
   } = options;
 
-  console.log('[ChatGPT API] Fetching conversations...');
-  if (maxLimit) console.log(`[ChatGPT API] Max limit: ${maxLimit}`);
-  if (stopAtConversationId) console.log(`[ChatGPT API] Stop at conversation: ${stopAtConversationId}`);
 
   const allConversations = [];
   let offset = 0;
@@ -177,8 +176,6 @@ async function fetchAllConversationsViaAPI(options = {}) {
   let foundStopId = false;
 
   while (hasMore && !foundStopId) {
-    console.log(`[ChatGPT API] Fetching page at offset ${offset}...`);
-
     const response = await chatGPTFetch(`/conversations?offset=${offset}&limit=${pageSize}&order=updated&is_archived=false`);
 
     if (!response.ok) {
@@ -191,13 +188,10 @@ async function fetchAllConversationsViaAPI(options = {}) {
     const data = await response.json();
     const conversations = data.items || [];
 
-    console.log(`[ChatGPT API] Page returned ${conversations.length} conversations`);
-
     // Check for stop ID in this batch
     if (stopAtConversationId) {
       const stopIndex = conversations.findIndex(c => c.id === stopAtConversationId);
       if (stopIndex !== -1) {
-        console.log(`[ChatGPT API] Found stop conversation at index ${stopIndex}`);
         allConversations.push(...conversations.slice(0, stopIndex));
         foundStopId = true;
         break;
@@ -209,7 +203,6 @@ async function fetchAllConversationsViaAPI(options = {}) {
     // Check if we've hit our limit
     if (maxLimit && allConversations.length >= maxLimit) {
       allConversations.length = maxLimit;
-      console.log(`[ChatGPT API] Hit max limit of ${maxLimit}`);
       break;
     }
 
@@ -221,7 +214,6 @@ async function fetchAllConversationsViaAPI(options = {}) {
     }
   }
 
-  console.log(`[ChatGPT API] Total conversations fetched: ${allConversations.length}`);
   return { conversations: allConversations };
 }
 
@@ -229,8 +221,6 @@ async function fetchAllConversationsViaAPI(options = {}) {
  * Get full conversation with messages via API
  */
 async function fetchConversationMessages(conversationId) {
-  console.log(`[ChatGPT API] Fetching conversation: ${conversationId}`);
-
   const response = await chatGPTFetch(`/conversation/${conversationId}`);
 
   if (!response.ok) {
@@ -348,72 +338,42 @@ function convertChatGPTAPIToDBFormat(apiConversation) {
   };
 }
 
-// Quick API test - lists first few conversations
+// Quick API test - returns summary only
 async function testChatGPTAPI() {
-  console.log('[ChatGPT API] Running API test...');
-
   try {
-    // Test 1: Fetch regular conversations (not in projects)
-    console.log('[ChatGPT API] Test 1: Fetching regular conversations...');
-    const response = await chatGPTFetch('/conversations?offset=0&limit=5&order=updated');
-    console.log('[ChatGPT API] Regular conversations status:', response.status);
+    // Test 1: Try basic conversations endpoint
+    const convResponse = await chatGPTFetch('/conversations?offset=0&limit=10&order=updated');
+    const convData = await convResponse.json();
 
-    let regularConvs = [];
-    if (response.ok) {
-      const data = await response.json();
-      regularConvs = data.items || [];
-      console.log(`[ChatGPT API] Found ${regularConvs.length} regular conversations`);
+    if (convResponse.ok && convData.items && convData.items.length > 0) {
+      return { success: true, totalConversations: convData.items.length, endpoint: 'conversations' };
     }
 
-    // Test 2: Fetch projects (gizmos)
-    console.log('[ChatGPT API] Test 2: Fetching projects...');
-    const projectsResponse = await chatGPTFetch('/gizmos?limit=20');
-    console.log('[ChatGPT API] Projects status:', projectsResponse.status);
+    // Test 2: Try project conversations (from user's working curl)
+    // First get user's gizmos
+    const bootstrapResponse = await chatGPTFetch('/gizmos/bootstrap?limit=10');
+    if (bootstrapResponse.ok) {
+      const bootstrapData = await bootstrapResponse.json();
+      let totalConvs = 0;
 
-    if (projectsResponse.ok) {
-      const projectsData = await projectsResponse.json();
-      console.log('[ChatGPT API] ===== PROJECTS RESPONSE =====');
-      console.log(JSON.stringify(projectsData, null, 2));
-    } else {
-      // Try alternate endpoints for projects
-      console.log('[ChatGPT API] Trying alternate project endpoints...');
-
-      // Try /gizmos/discovery
-      const discoveryResponse = await chatGPTFetch('/gizmos/discovery');
-      console.log('[ChatGPT API] Discovery status:', discoveryResponse.status);
-      if (discoveryResponse.ok) {
-        const discoveryData = await discoveryResponse.json();
-        console.log('[ChatGPT API] Discovery response:', JSON.stringify(discoveryData, null, 2));
+      // Try to get conversations from each gizmo
+      if (bootstrapData.gizmos) {
+        for (const gizmo of bootstrapData.gizmos.slice(0, 3)) {
+          const gizmoConvResponse = await chatGPTFetch(`/gizmos/${gizmo.id}/conversations?cursor=0`);
+          if (gizmoConvResponse.ok) {
+            const gizmoConvData = await gizmoConvResponse.json();
+            totalConvs += gizmoConvData.items?.length || gizmoConvData.conversations?.length || 0;
+          }
+        }
       }
 
-      // Try /me to get user info including projects
-      const meResponse = await chatGPTFetch('/me');
-      console.log('[ChatGPT API] /me status:', meResponse.status);
-      if (meResponse.ok) {
-        const meData = await meResponse.json();
-        console.log('[ChatGPT API] /me response:', JSON.stringify(meData, null, 2));
+      if (totalConvs > 0) {
+        return { success: true, totalConversations: totalConvs, endpoint: 'gizmos' };
       }
     }
 
-    // Test 3: Try to get project conversations from current URL
-    const projectMatch = window.location.pathname.match(/\/g\/(g-p-[a-zA-Z0-9]+)/);
-    if (projectMatch) {
-      const projectId = projectMatch[1];
-      console.log(`[ChatGPT API] Test 3: Found project in URL: ${projectId}`);
-
-      const projectConvsResponse = await chatGPTFetch(`/gizmos/${projectId}/conversations?cursor=0`);
-      console.log('[ChatGPT API] Project conversations status:', projectConvsResponse.status);
-
-      if (projectConvsResponse.ok) {
-        const projectConvs = await projectConvsResponse.json();
-        console.log('[ChatGPT API] ===== PROJECT CONVERSATIONS =====');
-        console.log(JSON.stringify(projectConvs, null, 2));
-      }
-    }
-
-    return { success: true, regularConversations: regularConvs.length };
+    return { success: false, error: `No conversations found`, status: convResponse.status };
   } catch (error) {
-    console.error('[ChatGPT API] Test failed:', error);
     return { success: false, error: error.message };
   }
 }
@@ -422,12 +382,3 @@ async function testChatGPTAPI() {
 window.fetchAllChatGPTConversations = fetchAllConversationsViaAPI;
 window.fetchChatGPTConversation = fetchConversationMessages;
 window.testChatGPTAPI = testChatGPTAPI;
-
-console.log('[ChatGPT API] Client loaded');
-
-// Auto-run test after a short delay
-setTimeout(async () => {
-  console.log('[ChatGPT API] ===== AUTO-RUNNING API TEST =====');
-  const result = await testChatGPTAPI();
-  console.log('[ChatGPT API] ===== TEST RESULT =====', result);
-}, 3000);
