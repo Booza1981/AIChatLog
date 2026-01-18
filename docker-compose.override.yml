@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro

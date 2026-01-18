@@ -97,6 +97,10 @@ docker-compose logs -f backend
 # - API docs: http://localhost:8000/docs
 ```
 
+### Local Development Overrides
+
+`docker-compose.override.yml` restores backend/frontend bind mounts for hot reloads in local development. It is automatically picked up by `docker-compose up -d`.
+
 ### Server Deployment Notes
 
 - The `chromium` service runs a browser with the extension preloaded for automatic syncing.
