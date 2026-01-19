@@ -18,12 +18,13 @@ async function loadSettings() {
     enabledServices: {
       claude: true,
       chatgpt: true,
-      gemini: false
+      gemini: true
     }
   });
 
   // Set toggle states
   document.querySelectorAll('.service-toggle').forEach(toggle => {
+    toggle.classList.remove('active');
     const service = toggle.getAttribute('data-service');
     if (settings.enabledServices[service]) {
       toggle.classList.add('active');
