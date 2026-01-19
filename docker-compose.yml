@@ -36,6 +36,8 @@ services:
     build:
       context: .
       dockerfile: chromium/Dockerfile
+      args:
+        EXTENSION_BUILD: ${EXTENSION_BUILD:-dev}
     container_name: chat-history-chromium
     security_opt:
       - seccomp:unconfined
