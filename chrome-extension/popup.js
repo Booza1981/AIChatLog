@@ -67,6 +67,9 @@ function setupEventListeners() {
   const syncAllBtn = document.getElementById('syncAll');
   if (syncAllBtn) syncAllBtn.addEventListener('click', handleSyncAll);
 
+  const syncAllEnabledBtn = document.getElementById('syncAllEnabled');
+  if (syncAllEnabledBtn) syncAllEnabledBtn.addEventListener('click', handleSyncAllEnabled);
+
   document.querySelectorAll('.service-toggle').forEach(toggle => {
     toggle.addEventListener('click', handleToggleService);
   });
@@ -103,7 +106,7 @@ async function handleSyncNow() {
     showStatus('✗ Sync failed: ' + error.message, 'error');
   } finally {
     button.disabled = false;
-    button.textContent = 'Sync Current';
+    button.textContent = 'Sync Active Service';
   }
 }
 
@@ -119,7 +122,7 @@ async function handleSyncQuick(event) {
     serviceName = 'ChatGPT';
   }
 
-  const confirmed = confirm(`Quick Sync will check all ${serviceName} conversations and only sync new or updated ones.\n\nThis is much faster than "Sync All". Continue?`);
+  const confirmed = confirm(`Quick Sync will check all ${serviceName} conversations and only sync new or updated ones.\n\nThis only applies to the active service. Continue?`);
   if (!confirmed) return;
 
   chrome.runtime.sendMessage({ action: 'triggerSyncQuick' });
@@ -139,11 +142,22 @@ async function handleSyncAll(event) {
     serviceName = 'ChatGPT';
   }
 
-  const confirmed = confirm(`This will sync ALL conversations from ${serviceName}.\n\nThis may take several minutes. Continue?`);
+  const confirmed = confirm(`This will sync ALL conversations from ${serviceName}.\n\nThis only applies to the active service. Continue?`);
   if (!confirmed) return;
 
   chrome.runtime.sendMessage({ action: 'triggerSyncAll' });
   showStatus('✓ Starting sync...', 'success');
+  setTimeout(() => window.close(), 500);
+}
+
+async function handleSyncAllEnabled(event) {
+  if (event) event.preventDefault();
+
+  const confirmed = confirm('This will sync ALL conversations for every enabled service with an open tab.\n\nThis may take several minutes. Continue?');
+  if (!confirmed) return;
+
+  chrome.runtime.sendMessage({ action: 'triggerSyncAllEnabled' });
+  showStatus('✓ Starting full sync for enabled services...', 'success');
   setTimeout(() => window.close(), 500);
 }
 
@@ -162,8 +176,14 @@ async function handleToggleService(event) {
 
   // Save to storage
   const settings = await chrome.storage.sync.get(['enabledServices']);
-  settings.enabledServices[service] = !isActive;
-  await chrome.storage.sync.set({ enabledServices: settings.enabledServices });
+  const enabledServices = {
+    claude: true,
+    chatgpt: true,
+    gemini: true,
+    ...(settings.enabledServices || {})
+  };
+  enabledServices[service] = !isActive;
+  await chrome.storage.sync.set({ enabledServices });
 }
 
 // Handle sync interval change

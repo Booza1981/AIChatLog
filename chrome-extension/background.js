@@ -19,6 +19,20 @@ const SERVICE_TABS = {
     patterns: ['https://gemini.google.com/*']
   }
 };
+const SERVICE_SCRIPTS = {
+  claude: {
+    url: 'https://claude.ai/*',
+    scripts: ['auto-logger.js', 'content-scripts/claude-api.js', 'content-scripts/claude.js']
+  },
+  chatgpt: {
+    url: 'https://chatgpt.com/*',
+    scripts: ['chatgpt-sync-state-manager.js', 'content-scripts/chatgpt-api.js', 'content-scripts/chatgpt.js']
+  },
+  gemini: {
+    url: 'https://gemini.google.com/*',
+    scripts: ['content-scripts/gemini-api.js', 'content-scripts/gemini.js']
+  }
+};
 
 async function isApiHealthy(apiBase) {
   const controller = new AbortController();
@@ -201,6 +215,75 @@ function detectService(url) {
   return null;
 }
 
+async function ensureContentScript(tabId, scripts) {
+  try {
+    await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+    return true;
+  } catch (pingError) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: scripts
+      });
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+      return true;
+    } catch (injectError) {
+      return false;
+    }
+  }
+}
+
+async function triggerSyncAllForService(service) {
+  const config = SERVICE_SCRIPTS[service];
+  if (!config) {
+    return false;
+  }
+
+  const tabs = await chrome.tabs.query({ url: config.url });
+  if (tabs.length === 0) {
+    return false;
+  }
+
+  const tab = tabs[0];
+  const ready = await ensureContentScript(tab.id, config.scripts);
+  if (!ready) {
+    return false;
+  }
+
+  await chrome.tabs.update(tab.id, { active: true });
+  await chrome.windows.update(tab.windowId, { focused: true });
+  await new Promise(resolve => setTimeout(resolve, 300));
+
+  chrome.tabs.sendMessage(tab.id, { action: 'syncAll' });
+  return true;
+}
+
+async function triggerSyncQuickForService(service) {
+  const config = SERVICE_SCRIPTS[service];
+  if (!config) {
+    return false;
+  }
+
+  const tabs = await chrome.tabs.query({ url: config.url });
+  if (tabs.length === 0) {
+    return false;
+  }
+
+  const tab = tabs[0];
+  const ready = await ensureContentScript(tab.id, config.scripts);
+  if (!ready) {
+    return false;
+  }
+
+  await chrome.tabs.update(tab.id, { active: true });
+  await chrome.windows.update(tab.windowId, { focused: true });
+  await new Promise(resolve => setTimeout(resolve, 300));
+
+  chrome.tabs.sendMessage(tab.id, { action: 'syncQuick' });
+  return true;
+}
+
 // Single unified message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'apiFetch') {
@@ -263,58 +346,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
         const service = detectService(activeTab?.url);
-
-        const serviceConfig = {
-          'claude': {
-            url: 'https://claude.ai/*',
-            scripts: ['auto-logger.js', 'content-scripts/claude-api.js', 'content-scripts/claude.js']
-          },
-          'chatgpt': {
-            url: 'https://chatgpt.com/*',
-            scripts: ['chatgpt-sync-state-manager.js', 'content-scripts/chatgpt-api.js', 'content-scripts/chatgpt.js']
-          },
-          'gemini': {
-            url: 'https://gemini.google.com/*',
-            scripts: ['content-scripts/gemini-api.js', 'content-scripts/gemini.js']
-          }
-        };
-
         const targetService = service || 'claude';
-        const config = serviceConfig[targetService];
-        if (!config) return;
-
-        const tabs = await chrome.tabs.query({ url: config.url });
-        if (tabs.length === 0) return;
-
-        const tab = tabs[0];
-        let contentScriptReady = false;
-
-        try {
-          await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
-          contentScriptReady = true;
-        } catch (pingError) {
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              files: config.scripts
-            });
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
-            contentScriptReady = true;
-          } catch (injectError) {
-            return;
-          }
-        }
-
-        if (!contentScriptReady) return;
-
-        await chrome.tabs.update(tab.id, { active: true });
-        await chrome.windows.update(tab.windowId, { focused: true });
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        chrome.tabs.sendMessage(tab.id, { action: 'syncAll' });
+        await triggerSyncAllForService(targetService);
       } catch (error) {
         console.warn('[Background] triggerSyncAll error:', error.message);
+      }
+    })();
+
+    return false;
+  }
+
+  // Handle triggerSyncAllEnabled from popup (all enabled services)
+  if (request.action === 'triggerSyncAllEnabled') {
+    (async () => {
+      try {
+        const settings = await chrome.storage.sync.get(['enabledServices']);
+        const enabled = settings.enabledServices || {};
+        for (const service of Object.keys(SERVICE_SCRIPTS)) {
+          if (enabled[service]) {
+            await triggerSyncAllForService(service);
+          }
+        }
+      } catch (error) {
+        console.warn('[Background] triggerSyncAllEnabled error:', error.message);
       }
     })();
 
@@ -327,56 +381,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
         const service = detectService(activeTab?.url);
-
-        const serviceConfig = {
-          'claude': {
-            url: 'https://claude.ai/*',
-            scripts: ['auto-logger.js', 'content-scripts/claude-api.js', 'content-scripts/claude.js']
-          },
-          'chatgpt': {
-            url: 'https://chatgpt.com/*',
-            scripts: ['chatgpt-sync-state-manager.js', 'content-scripts/chatgpt-api.js', 'content-scripts/chatgpt.js']
-          },
-          'gemini': {
-            url: 'https://gemini.google.com/*',
-            scripts: ['content-scripts/gemini-api.js', 'content-scripts/gemini.js']
-          }
-        };
-
         const targetService = service || 'claude';
-        const config = serviceConfig[targetService];
-        if (!config) return;
-
-        const tabs = await chrome.tabs.query({ url: config.url });
-        if (tabs.length === 0) return;
-
-        const tab = tabs[0];
-        let contentScriptReady = false;
-
-        try {
-          await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
-          contentScriptReady = true;
-        } catch (pingError) {
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              files: config.scripts
-            });
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
-            contentScriptReady = true;
-          } catch (injectError) {
-            return;
-          }
-        }
-
-        if (!contentScriptReady) return;
-
-        await chrome.tabs.update(tab.id, { active: true });
-        await chrome.windows.update(tab.windowId, { focused: true });
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        chrome.tabs.sendMessage(tab.id, { action: 'syncQuick' });
+        await triggerSyncQuickForService(targetService);
       } catch (error) {
         console.warn('[Background] triggerSyncQuick error:', error.message);
       }
