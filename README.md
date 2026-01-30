@@ -109,6 +109,11 @@ docker-compose logs -f backend
   - `DATABASE_VOLUME_PATH`, `CHROMIUM_CONFIG_PATH`
 - After redeploying the stack, reload the extension in Chromium (`chrome://extensions`) if it doesn’t pick up changes automatically.
 
+### External Access / Auth (Out of Repo)
+
+Reverse proxy, SSO, or access-control layers (Traefik/Authelia/Cloudflare Workers, etc.) are intentionally **not** tracked in this repo.
+Keep those in a separate, local Portainer stack or a non‑Git compose file so the app repo stays focused and portable.
+
 ## 📁 Project Structure
 
 ```
