@@ -60,10 +60,23 @@ services:
     restart: unless-stopped
     networks:
       - chat-history-net
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.portal.rule=Host(`portal.beuzeval.xyz`,`portal.beuzeval.workers.dev`)"
+      - "traefik.http.routers.portal.entrypoints=https"
+      - "traefik.http.routers.portal.tls=true"
+      - "traefik.http.routers.portal.tls.certresolver=cloudflare"
+      - "traefik.http.routers.portal.middlewares=authelia@docker"
+      - "traefik.http.services.portal.loadbalancer.server.port=3000"
+
 
 networks:
   chat-history-net:
     driver: bridge
+  proxy:
+    external: true
 
 volumes:
   database:
