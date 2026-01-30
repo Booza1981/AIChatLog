@@ -70,14 +70,14 @@ services:
       - "traefik.http.routers.portal.tls.certresolver=cloudflare"
       - "traefik.http.routers.portal.middlewares=authelia@docker"
       - "traefik.http.services.portal.loadbalancer.server.port=3000"
-      - "traefik.http.routers.portal-bypass.rule=Host(`portal.beuzeval.xyz`) && Headers(`X-Portal-Bypass`, `1`)"
+      - "traefik.http.routers.portal-bypass.rule=Host(`portal.beuzeval.xyz`) && PathPrefix(`/__worker`)"
       - "traefik.http.routers.portal-bypass.priority=100"
       - "traefik.http.routers.portal-bypass.entrypoints=https"
       - "traefik.http.routers.portal-bypass.tls=true"
       - "traefik.http.routers.portal-bypass.tls.certresolver=cloudflare"
       - "traefik.http.routers.portal-bypass.service=portal"
-      - "traefik.http.middlewares.portal-bypass-debug.headers.customresponseheaders.X-Bypass-Matched=yes"
-      - "traefik.http.routers.portal-bypass.middlewares=portal-bypass-debug"
+      - "traefik.http.middlewares.portal-bypass-strip.stripprefix.prefixes=/__worker"
+      - "traefik.http.routers.portal-bypass.middlewares=portal-bypass-strip"
 
 
 networks:
