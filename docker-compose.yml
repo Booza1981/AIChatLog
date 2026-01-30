@@ -46,8 +46,6 @@ services:
       - PGID=1000
       - TZ=${TZ:-Etc/UTC}
       - CHROME_CLI=--disable-dev-shm-usage --no-sandbox --disable-blink-features=AutomationControlled --disable-infobars --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --load-extension=/opt/extension
-      - CUSTOM_USER=${BROWSER_USER:-admin}
-      - PASSWORD=${BROWSER_PASSWORD:-changeme}
     volumes:
       - ${CHROMIUM_CONFIG_PATH:-chromium-config}:/config
     ports:
