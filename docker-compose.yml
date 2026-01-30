@@ -64,7 +64,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-proxy}"
-      - "traefik.http.routers.portal.rule=Host(`portal.beuzeval.xyz`) || Host(`portal.beuzeval.workers.dev`)"
+      - "traefik.http.routers.portal.rule=Host(`portal.beuzeval.xyz`)"
       - "traefik.http.routers.portal.entrypoints=https"
       - "traefik.http.routers.portal.tls=true"
       - "traefik.http.routers.portal.tls.certresolver=cloudflare"
