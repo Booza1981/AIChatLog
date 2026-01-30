@@ -76,6 +76,8 @@ services:
       - "traefik.http.routers.portal-bypass.tls=true"
       - "traefik.http.routers.portal-bypass.tls.certresolver=cloudflare"
       - "traefik.http.routers.portal-bypass.service=portal"
+      - "traefik.http.middlewares.portal-bypass-debug.headers.customresponseheaders.X-Bypass-Matched=yes"
+      - "traefik.http.routers.portal-bypass.middlewares=portal-bypass-debug"
 
 
 networks:
