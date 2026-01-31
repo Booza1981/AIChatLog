@@ -131,6 +131,26 @@ async function reportServiceStatus({
   }
 }
 
+function isAuthErrorMessage(message) {
+  if (!message) return false;
+  const text = message.toLowerCase();
+  const patterns = [
+    'auth',
+    'login',
+    'sign in',
+    'sign-in',
+    'unauthorized',
+    'forbidden',
+    '401',
+    '403',
+    'session token',
+    'session expired',
+    'no session',
+    'token'
+  ];
+  return patterns.some(pattern => text.includes(pattern));
+}
+
 async function checkServiceSessions() {
   const tabs = await chrome.tabs.query({ url: [
     'https://claude.ai/*',
@@ -401,12 +421,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Handle syncError from content scripts
   if (request.action === 'syncError') {
-    reportServiceStatus({
-      service: request.service,
-      success: false,
-      sessionHealthy: false,
-      errorMessage: request.error || 'Sync failed'
-    });
+    const errorMessage = request.error || 'Sync failed';
+    if (isAuthErrorMessage(errorMessage)) {
+      reportServiceStatus({
+        service: request.service,
+        success: false,
+        sessionHealthy: false,
+        errorMessage
+      });
+    } else {
+      reportServiceStatus({
+        service: request.service,
+        success: null,
+        sessionHealthy: null,
+        errorMessage: null
+      });
+    }
     return false;
   }
 
