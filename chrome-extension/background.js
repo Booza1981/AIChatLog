@@ -131,6 +131,48 @@ async function reportServiceStatus({
   }
 }
 
+async function checkServiceSessions() {
+  const tabs = await chrome.tabs.query({ url: [
+    'https://claude.ai/*',
+    'https://chatgpt.com/*',
+    'https://chat.openai.com/*',
+    'https://gemini.google.com/*'
+  ]});
+
+  for (const tab of tabs) {
+    const service = detectService(tab.url);
+    if (!service) {
+      continue;
+    }
+    const config = SERVICE_SCRIPTS[service];
+    if (!config) {
+      continue;
+    }
+    const ready = await ensureContentScript(tab.id, config.scripts);
+    if (!ready) {
+      continue;
+    }
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, { action: 'checkSession' });
+      if (response && typeof response.sessionHealthy === 'boolean') {
+        reportServiceStatus({
+          service,
+          success: null,
+          sessionHealthy: response.sessionHealthy,
+          errorMessage: response.errorMessage || null
+        });
+      }
+    } catch (error) {
+      reportServiceStatus({
+        service,
+        success: null,
+        sessionHealthy: false,
+        errorMessage: error.message || 'Session check failed'
+      });
+    }
+  }
+}
+
 // Initialize extension
 chrome.runtime.onInstalled.addListener(async () => {
   const settings = await chrome.storage.sync.get({
@@ -151,11 +193,18 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (settings.autoSync) {
     scheduleSync(settings.syncInterval);
   }
+
+  setTimeout(() => {
+    checkServiceSessions();
+  }, 3000);
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   await ensureApiBase();
   await ensureServiceTabs();
+  setTimeout(() => {
+    checkServiceSessions();
+  }, 3000);
 });
 
 // Schedule periodic sync

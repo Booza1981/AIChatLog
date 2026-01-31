@@ -17,6 +17,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'checkSession') {
+    checkChatGPTSession()
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ sessionHealthy: false, errorMessage: error.message }));
+    return true;
+  }
+
   if (request.action === 'sync') {
     performSync()
       .then(() => sendResponse({ success: true }))
@@ -44,6 +51,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+
+async function checkChatGPTSession() {
+  try {
+    const response = await fetch('https://chatgpt.com/api/auth/session', {
+      credentials: 'include'
+    });
+    if (!response.ok) {
+      return { sessionHealthy: false, errorMessage: `Auth check failed (${response.status})` };
+    }
+    const data = await response.json();
+    const hasUser = Boolean(data && (data.user?.id || data.user?.email));
+    const hasToken = Boolean(data && data.accessToken);
+    if (!hasUser && !hasToken) {
+      return { sessionHealthy: false, errorMessage: 'No active session found' };
+    }
+    return { sessionHealthy: true };
+  } catch (error) {
+    return { sessionHealthy: false, errorMessage: error.message || 'Session check failed' };
+  }
+}
 
 // Main sync function - sync current conversation
 async function performSync() {

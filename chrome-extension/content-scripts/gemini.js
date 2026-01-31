@@ -21,6 +21,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'checkSession') {
+    checkGeminiSession()
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ sessionHealthy: false, errorMessage: error.message }));
+    return true;
+  }
+
   if (request.action === 'sync') {
     console.log('[Gemini] Sync requested');
     performSync()
@@ -51,6 +58,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+
+async function checkGeminiSession() {
+  try {
+    const token = extractSessionToken();
+    if (token) {
+      return { sessionHealthy: true };
+    }
+    return { sessionHealthy: false, errorMessage: 'No session token found' };
+  } catch (error) {
+    return { sessionHealthy: false, errorMessage: error.message || 'Session check failed' };
+  }
+}
 
 // Main sync function
 async function performSync() {

@@ -35,6 +35,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'checkSession') {
+    checkClaudeSession()
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ sessionHealthy: false, errorMessage: error.message }));
+    return true;
+  }
+
   if (request.action === 'sync') {
     console.log('[Claude] Sync requested');
     debugLog('Sync requested');
@@ -72,6 +79,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+
+async function checkClaudeSession() {
+  try {
+    const response = await fetch('https://claude.ai/api/organizations', {
+      credentials: 'include'
+    });
+    if (!response.ok) {
+      return { sessionHealthy: false, errorMessage: `Auth check failed (${response.status})` };
+    }
+    const orgs = await response.json();
+    if (!Array.isArray(orgs) || orgs.length === 0) {
+      return { sessionHealthy: false, errorMessage: 'No organizations found' };
+    }
+    return { sessionHealthy: true };
+  } catch (error) {
+    return { sessionHealthy: false, errorMessage: error.message || 'Session check failed' };
+  }
+}
 
 // Main sync function
 async function performSync() {
