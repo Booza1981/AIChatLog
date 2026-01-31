@@ -84,16 +84,27 @@ class SearchResponse(BaseModel):
     query: str
 
 
-class ScraperStatus(BaseModel):
-    """Scraper health status."""
+class ServiceStatus(BaseModel):
+    """Extension service status."""
     service: str
-    last_successful_scrape: Optional[datetime] = None
-    last_attempt: Optional[datetime] = None
+    last_sync_at: Optional[datetime] = None
+    last_attempt_at: Optional[datetime] = None
     session_healthy: bool = False
     error_count: int = 0
     last_error_message: Optional[str] = None
     consecutive_failures: int = 0
-    total_conversations_scraped: int = 0
+    total_conversations_synced: int = 0
+    last_conversation_id: Optional[str] = None
+
+
+class ServiceStatusUpdate(BaseModel):
+    """Service status update from extension."""
+    service: str
+    success: Optional[bool] = None
+    session_healthy: Optional[bool] = None
+    error_message: Optional[str] = None
+    total_conversations: Optional[int] = None
+    last_conversation_id: Optional[str] = None
 
 
 class Stats(BaseModel):
@@ -109,4 +120,4 @@ class HealthResponse(BaseModel):
     status: str
     timestamp: str
     database: bool
-    services: List[ScraperStatus]
+    services: List[ServiceStatus]

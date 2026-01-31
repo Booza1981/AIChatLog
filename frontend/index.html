@@ -9,11 +9,24 @@
 <body>
     <div class="container">
         <header>
-            <h1>🔍 Chat History Search</h1>
-            <p class="subtitle">Search across Claude, ChatGPT, Gemini, and Perplexity</p>
+            <button class="header-link" id="homeLink" type="button" aria-label="Return to default view">
+                <h1>🔍 Chat History Search</h1>
+                <p class="subtitle">Search across Claude, ChatGPT, Gemini, and Perplexity</p>
+            </button>
         </header>
 
         <main>
+            <!-- Service Status -->
+            <div id="serviceStatusCard" class="service-status-card" style="display: none;">
+                <div class="service-status-header">
+                    <h2 class="section-title">Service Status</h2>
+                    <button id="refreshServiceStatus" class="btn-link" type="button">Refresh</button>
+                </div>
+                <div id="serviceStatusList" class="service-status-list">
+                    <div class="loading-status">Loading service status...</div>
+                </div>
+            </div>
+
             <!-- Search Form -->
             <div class="search-card">
                 <form id="searchForm" class="search-form">
@@ -118,6 +131,7 @@
         }
 
         let recentSourceFilter = '';
+        const SERVICES = ['claude', 'chatgpt', 'gemini', 'perplexity'];
 
         // Load stats on page load
         async function loadStats() {
@@ -358,12 +372,103 @@
             document.getElementById('searchQuery').value = '';
         }
 
+        function resetView() {
+            document.getElementById('searchForm').reset();
+            document.getElementById('serviceFilter').value = '';
+            document.getElementById('dateFrom').value = '';
+            document.getElementById('dateTo').value = '';
+            document.getElementById('searchQuery').value = '';
+            setRecentFilter('');
+            showRecentChats();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function formatTimestamp(value) {
+            if (!value) return 'Never';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) {
+                return 'Unknown';
+            }
+            return date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit'
+            });
+        }
+
+        function statusLabel(sessionHealthy, lastAttemptAt) {
+            if (sessionHealthy === true) return 'Signed in';
+            if (sessionHealthy === false) return 'Needs sign-in';
+            if (lastAttemptAt) return 'Unknown';
+            return 'Not checked';
+        }
+
+        async function loadServiceStatus() {
+            const card = document.getElementById('serviceStatusCard');
+            const list = document.getElementById('serviceStatusList');
+            try {
+                const response = await fetch(`${API_BASE}/service-status`);
+                if (!response.ok) {
+                    throw new Error(`Status request failed (${response.status})`);
+                }
+                const data = await response.json();
+                const byService = {};
+                (data || []).forEach(entry => {
+                    byService[entry.service] = entry;
+                });
+
+                let html = '';
+                SERVICES.forEach(service => {
+                    const entry = byService[service] || {};
+                    const sessionHealthy = entry.session_healthy;
+                    const statusText = statusLabel(sessionHealthy, entry.last_attempt_at);
+                    const lastSync = formatTimestamp(entry.last_sync_at);
+                    const lastAttempt = formatTimestamp(entry.last_attempt_at);
+                    const errorMessage = entry.last_error_message || '';
+
+                    html += `
+                        <div class="service-status-item">
+                            <div class="service-status-top">
+                                <span class="badge badge-${service}">${service}</span>
+                                <span class="status-dot ${sessionHealthy === true ? 'ok' : sessionHealthy === false ? 'error' : 'unknown'}"></span>
+                                <span class="status-text">${statusText}</span>
+                            </div>
+                            <div class="service-status-meta">
+                                <span>Last sync: ${lastSync}</span>
+                                <span>Last attempt: ${lastAttempt}</span>
+                            </div>
+                            ${errorMessage ? `<div class="service-status-error">Last error: ${errorMessage}</div>` : ''}
+                        </div>
+                    `;
+                });
+
+                list.innerHTML = html;
+                card.style.display = 'block';
+            } catch (error) {
+                console.error('Error loading service status:', error);
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <p>Error loading service status</p>
+                    </div>
+                `;
+                card.style.display = 'block';
+            }
+        }
+
         // Event listeners
         document.getElementById('searchForm').addEventListener('submit', performSearch);
+        document.getElementById('homeLink').addEventListener('click', (event) => {
+            event.preventDefault();
+            resetView();
+        });
+        document.getElementById('refreshServiceStatus').addEventListener('click', loadServiceStatus);
 
         // Load data on page load
         loadStats();
         loadRecentChats();
+        loadServiceStatus();
     </script>
 </body>
 </html>

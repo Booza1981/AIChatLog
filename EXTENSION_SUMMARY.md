@@ -202,12 +202,12 @@ Echoes (and similar tools) work **exactly like this**:
 3. Customize UI (colors, branding, etc.)
 
 ### Short Term
-1. Implement ChatGPT scraper:
+1. Implement ChatGPT sync adapter:
    - Copy `claude.js` structure
    - Adapt selectors for ChatGPT DOM
    - Test extraction
 
-2. Implement Gemini scraper:
+2. Implement Gemini sync adapter:
    - Similar to ChatGPT
    - Different selectors
 

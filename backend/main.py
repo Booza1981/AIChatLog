@@ -6,21 +6,21 @@ Phase 1: Full API implementation with database and search
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import logging
 import json
 
 from database import Database
 from models import (
     SearchResponse, ConversationSearchResult, Stats,
-    HealthResponse
+    HealthResponse, ServiceStatus, ServiceStatusUpdate
 )
 
 # Initialize FastAPI
 app = FastAPI(
     title="Chat History Search API",
     version="1.0.0",
-    description="Self-hosted chat history scraper and search system"
+    description="Self-hosted chat history sync and search system"
 )
 
 # CORS middleware
@@ -63,7 +63,7 @@ async def root():
             "search": "/api/search",
             "stats": "/api/stats",
             "health": "/api/health",
-            "scrape": "disabled"
+            "service_status": "/api/service-status"
         }
     }
 
@@ -304,11 +304,12 @@ async def health_check():
     """
     try:
         db_healthy = await db.check_connection()
+        services = await db.get_all_service_statuses()
         return HealthResponse(
             status="healthy" if db_healthy else "degraded",
             timestamp=datetime.now().isoformat(),
             database=db_healthy,
-            services=[]
+            services=[ServiceStatus(**service) for service in services]
         )
     except Exception as e:
         logger.error(f"Health check error: {e}", exc_info=True)
@@ -318,6 +319,35 @@ async def health_check():
             database=False,
             services=[]
         )
+
+
+@app.get("/api/service-status", response_model=List[ServiceStatus])
+async def get_service_statuses():
+    """Return status for all services."""
+    try:
+        services = await db.get_all_service_statuses()
+        return [ServiceStatus(**service) for service in services]
+    except Exception as e:
+        logger.error(f"Service status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get service status: {str(e)}")
+
+
+@app.post("/api/service-status")
+async def update_service_status(update: ServiceStatusUpdate):
+    """Update status for a service."""
+    try:
+        await db.update_service_status(
+            service=update.service,
+            success=update.success,
+            session_healthy=update.session_healthy,
+            error_message=update.error_message,
+            total_conversations=update.total_conversations,
+            last_conversation_id=update.last_conversation_id
+        )
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Service status update error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update service status: {str(e)}")
 
 
 @app.post("/api/auto-log")

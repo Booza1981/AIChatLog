@@ -105,6 +105,32 @@ async function fetchWithFallback(path, options) {
   throw new Error(message);
 }
 
+async function reportServiceStatus({
+  service,
+  success,
+  sessionHealthy,
+  errorMessage,
+  totalConversations,
+  lastConversationId
+}) {
+  try {
+    await fetchWithFallback('/api/service-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service,
+        success,
+        session_healthy: sessionHealthy,
+        error_message: errorMessage,
+        total_conversations: totalConversations,
+        last_conversation_id: lastConversationId
+      })
+    });
+  } catch (error) {
+    console.warn('[Background] Failed to report service status:', error.message || error);
+  }
+}
+
 // Initialize extension
 chrome.runtime.onInstalled.addListener(async () => {
   const settings = await chrome.storage.sync.get({
@@ -314,11 +340,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.storage.local.set({
       [`lastSync_${request.service}`]: Date.now()
     });
+    const totalConversations = request.result?.imported ?? request.result?.synced ?? request.result?.total ?? null;
+    reportServiceStatus({
+      service: request.service,
+      success: true,
+      sessionHealthy: true,
+      totalConversations
+    });
     return false;
   }
 
   // Handle syncError from content scripts
   if (request.action === 'syncError') {
+    reportServiceStatus({
+      service: request.service,
+      success: false,
+      sessionHealthy: false,
+      errorMessage: request.error || 'Sync failed'
+    });
     return false;
   }
 

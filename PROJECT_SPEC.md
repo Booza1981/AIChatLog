@@ -125,8 +125,6 @@ AIChatLog/
 │   ├── database.py           # SQLite + FTS5 operations
 │   ├── models.py             # Pydantic models
 │   ├── requirements.txt
-│   └── scrapers/
-│       └── claude.py         # (Legacy - not used by extension)
 │
 ├── frontend/                  # Search dashboard (Docker)
 │   ├── Dockerfile
@@ -221,15 +219,17 @@ CREATE TRIGGER conversations_au AFTER UPDATE ON conversations BEGIN
     WHERE rowid = new.id;
 END;
 
--- Scraper status tracking
-CREATE TABLE scraper_status (
+-- Service status tracking
+CREATE TABLE service_status (
     service TEXT PRIMARY KEY,
-    last_successful_scrape TIMESTAMP,
-    last_attempt TIMESTAMP,
+    last_sync_at TIMESTAMP,
+    last_attempt_at TIMESTAMP,
     session_healthy BOOLEAN DEFAULT 0,
     error_count INTEGER DEFAULT 0,
     last_error_message TEXT,
-    consecutive_failures INTEGER DEFAULT 0
+    consecutive_failures INTEGER DEFAULT 0,
+    total_conversations_synced INTEGER DEFAULT 0,
+    last_conversation_id TEXT
 );
 ```
 
@@ -374,15 +374,15 @@ class StreamBuffer:
 - **Gemini:** Unknown - investigate during implementation
 - **Perplexity:** Unknown - investigate during implementation
 
-### 2. BASE SCRAPER CLASS (ASYNC WITH BROWSER CONTEXT)
+### 2. LEGACY PLAYWRIGHT PROTOTYPE (ASYNC WITH BROWSER CONTEXT)
 
 ```python
-# scrapers/base.py
+# extension/base.py
 from abc import ABC, abstractmethod
 from playwright.async_api import async_playwright, BrowserContext
 import os
 
-class BaseScraper(ABC):
+class BaseSyncPrototype(ABC):
     def __init__(self, service_name: str):
         self.service_name = service_name
         self.profile_path = f"/app/volumes/browser-profiles/{service_name}"
@@ -472,7 +472,7 @@ async def trigger_scrape(service: str, background_tasks: BackgroundTasks):
     if service not in ["claude", "chatgpt", "gemini", "perplexity", "all"]:
         raise HTTPException(status_code=400, detail="Invalid service")
     
-    background_tasks.add_task(run_scraper, service)
+    background_tasks.add_task(run_sync, service)
     return {"status": "started", "service": service}
 
 @app.get("/api/search")
@@ -506,7 +506,7 @@ async def health_check():
     return {
         "status": "healthy",
         "database": "connected",
-        "services": await get_scraper_statuses()
+        "services": await get_service_statuses()
     }
 
 @app.get("/api/stats")
@@ -704,7 +704,7 @@ This project originally planned to use Playwright for browser automation. This a
 - ✅ Simple setup (load unpacked extension)
 - ✅ Reliable and fast
 
-The `backend/scrapers/claude.py` file remains from the Playwright implementation but is not used by the extension. Documentation about Playwright/VNC setup has been archived in `docs/archived/` for historical reference.
+The legacy Playwright prototype is not used by the extension. Documentation about Playwright/VNC setup has been archived in `docs/archived/` for historical reference.
 
 ---
 

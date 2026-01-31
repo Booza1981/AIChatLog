@@ -64,21 +64,21 @@ CREATE TRIGGER IF NOT EXISTS conversations_au AFTER UPDATE ON conversations BEGI
     WHERE rowid = new.id;
 END;
 
--- Scraper status tracking
-CREATE TABLE IF NOT EXISTS scraper_status (
+-- Extension service status tracking
+CREATE TABLE IF NOT EXISTS service_status (
     service TEXT PRIMARY KEY CHECK(service IN ('claude', 'chatgpt', 'gemini', 'perplexity')),
-    last_successful_scrape TIMESTAMP,
-    last_attempt TIMESTAMP,
+    last_sync_at TIMESTAMP,
+    last_attempt_at TIMESTAMP,
     session_healthy BOOLEAN DEFAULT 0,
     error_count INTEGER DEFAULT 0,
     last_error_message TEXT,
     consecutive_failures INTEGER DEFAULT 0,
-    total_conversations_scraped INTEGER DEFAULT 0,
-    last_conversation_id TEXT  -- For resuming after failures
+    total_conversations_synced INTEGER DEFAULT 0,
+    last_conversation_id TEXT
 );
 
--- Initialize scraper status for all services
-INSERT OR IGNORE INTO scraper_status (service, session_healthy) VALUES
+-- Initialize service status for all services
+INSERT OR IGNORE INTO service_status (service, session_healthy) VALUES
     ('claude', 0),
     ('chatgpt', 0),
     ('gemini', 0),

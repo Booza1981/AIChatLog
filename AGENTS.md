@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-- `backend/`: FastAPI service, SQLite/FTS5 database access, and scraper stubs.
+- `backend/`: FastAPI service, SQLite/FTS5 database access, and legacy sync stubs.
 - `frontend/`: Static search UI served via Docker (HTML/CSS).
 - `chrome-extension/`: Manifest V3 extension, background worker, popup UI, and content scripts.
 - `scripts/`: Maintenance utilities (duplicate fixes, cleanup).

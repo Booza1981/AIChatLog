@@ -214,7 +214,7 @@ Uses SQLite with FTS5 (Full-Text Search) for performance:
 - **conversations**: Main conversation metadata
 - **messages**: Individual messages (normalized)
 - **conversations_fts**: FTS5 virtual table for fast search
-- **scraper_status**: Legacy table (not used in extension sync flow)
+- **service_status**: Extension sync status (last sync, session health)
 
 See `PROJECT_SPEC.md` for detailed schema.
 

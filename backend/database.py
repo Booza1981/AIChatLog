@@ -45,7 +45,53 @@ class Database:
         await self.db.executescript(schema_sql)
         await self.db.commit()
 
+        await self._migrate_service_status()
+
         print(f"[Database] Initialized at {self.db_path}")
+
+    async def _table_exists(self, table_name: str) -> bool:
+        async with self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row is not None
+
+    async def _migrate_service_status(self):
+        """Migrate legacy status data into service_status and remove old table."""
+        if not await self._table_exists('scraper_status'):
+            return
+
+        if await self._table_exists('service_status'):
+            await self.db.execute(
+                """
+                INSERT OR REPLACE INTO service_status (
+                    service,
+                    last_sync_at,
+                    last_attempt_at,
+                    session_healthy,
+                    error_count,
+                    last_error_message,
+                    consecutive_failures,
+                    total_conversations_synced,
+                    last_conversation_id
+                )
+                SELECT
+                    service,
+                    last_successful_scrape,
+                    last_attempt,
+                    session_healthy,
+                    error_count,
+                    last_error_message,
+                    consecutive_failures,
+                    total_conversations_scraped,
+                    last_conversation_id
+                FROM scraper_status
+                """
+            )
+
+        await self.db.execute("DROP TABLE IF EXISTS scraper_status")
+        await self.db.commit()
 
     async def close(self):
         """Close database connection."""
@@ -358,61 +404,77 @@ class Database:
 
         return stats
 
-    # ==================== SCRAPER STATUS ====================
+    # ==================== SERVICE STATUS ====================
 
-    async def update_scraper_status(
+    async def update_service_status(
         self,
         service: str,
-        success: bool,
+        success: Optional[bool] = None,
+        session_healthy: Optional[bool] = None,
         error_message: Optional[str] = None,
-        total_conversations: Optional[int] = None
+        total_conversations: Optional[int] = None,
+        last_conversation_id: Optional[str] = None
     ):
-        """Update scraper status after a scrape attempt."""
+        """Update service status after a sync attempt."""
         now = datetime.now()
 
-        if success:
+        if success is True:
             await self.db.execute(
                 '''
-                UPDATE scraper_status SET
-                    last_successful_scrape = ?,
-                    last_attempt = ?,
-                    session_healthy = 1,
+                UPDATE service_status SET
+                    last_sync_at = ?,
+                    last_attempt_at = ?,
+                    session_healthy = COALESCE(?, 1),
                     consecutive_failures = 0,
                     last_error_message = NULL,
-                    total_conversations_scraped = COALESCE(?, total_conversations_scraped)
+                    total_conversations_synced = COALESCE(?, total_conversations_synced),
+                    last_conversation_id = COALESCE(?, last_conversation_id)
                 WHERE service = ?
                 ''',
-                (now, now, total_conversations, service)
+                (now, now, session_healthy, total_conversations, last_conversation_id, service)
+            )
+        elif success is False:
+            await self.db.execute(
+                '''
+                UPDATE service_status SET
+                    last_attempt_at = ?,
+                    session_healthy = COALESCE(?, 0),
+                    error_count = error_count + 1,
+                    consecutive_failures = consecutive_failures + 1,
+                    last_error_message = ?,
+                    last_conversation_id = COALESCE(?, last_conversation_id)
+                WHERE service = ?
+                ''',
+                (now, session_healthy, error_message, last_conversation_id, service)
             )
         else:
             await self.db.execute(
                 '''
-                UPDATE scraper_status SET
-                    last_attempt = ?,
-                    session_healthy = 0,
-                    error_count = error_count + 1,
-                    consecutive_failures = consecutive_failures + 1,
-                    last_error_message = ?
+                UPDATE service_status SET
+                    last_attempt_at = ?,
+                    session_healthy = COALESCE(?, session_healthy),
+                    last_error_message = COALESCE(?, last_error_message),
+                    last_conversation_id = COALESCE(?, last_conversation_id)
                 WHERE service = ?
                 ''',
-                (now, error_message, service)
+                (now, session_healthy, error_message, last_conversation_id, service)
             )
 
         await self.db.commit()
 
-    async def get_scraper_status(self, service: str) -> Optional[Dict]:
-        """Get scraper status for a service."""
+    async def get_service_status(self, service: str) -> Optional[Dict]:
+        """Get service status for a service."""
         async with self.db.execute(
-            'SELECT * FROM scraper_status WHERE service = ?',
+            'SELECT * FROM service_status WHERE service = ?',
             (service,)
         ) as cursor:
             cursor.row_factory = aiosqlite.Row
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def get_all_scraper_statuses(self) -> List[Dict]:
-        """Get all scraper statuses."""
-        async with self.db.execute('SELECT * FROM scraper_status') as cursor:
+    async def get_all_service_statuses(self) -> List[Dict]:
+        """Get all service statuses."""
+        async with self.db.execute('SELECT * FROM service_status') as cursor:
             cursor.row_factory = aiosqlite.Row
             return [dict(row) async for row in cursor]
 
