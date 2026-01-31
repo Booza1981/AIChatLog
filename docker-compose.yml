@@ -7,7 +7,7 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ${DATABASE_VOLUME_PATH:-./volumes/database}:/app/volumes/database
+      - ${DATABASE_VOLUME_PATH:-./Database}:/app/volumes/database
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DATABASE_PATH=/app/volumes/database/conversations.db
@@ -31,6 +31,24 @@ services:
     restart: unless-stopped
     networks:
       - chat-history-net
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.portal.rule=Host(`portal.beuzeval.xyz`)"
+      - "traefik.http.routers.portal.entrypoints=https"
+      - "traefik.http.routers.portal.tls=true"
+      - "traefik.http.routers.portal.tls.certresolver=cloudflare"
+      - "traefik.http.routers.portal.middlewares=authelia@docker"
+      - "traefik.http.services.portal.loadbalancer.server.port=3000"
+      - "traefik.http.routers.portal-bypass.rule=Host(`portal.beuzeval.xyz`) && PathPrefix(`/__worker`)"
+      - "traefik.http.routers.portal-bypass.priority=100"
+      - "traefik.http.routers.portal-bypass.entrypoints=https"
+      - "traefik.http.routers.portal-bypass.tls=true"
+      - "traefik.http.routers.portal-bypass.tls.certresolver=cloudflare"
+      - "traefik.http.routers.portal-bypass.service=portal"
+      - "traefik.http.middlewares.portal-bypass-strip.stripprefix.prefixes=/__worker"
+      - "traefik.http.routers.portal-bypass.middlewares=portal-bypass-strip"
 
   chromium:
     build:
@@ -65,6 +83,8 @@ services:
 networks:
   chat-history-net:
     driver: bridge
+  proxy:
+    external: true
 
 volumes:
   database:
