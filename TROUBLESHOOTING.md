@@ -108,6 +108,8 @@ Common issues and solutions for the AI Chat History extension and backend.
 2. Verify conversations exist: Open http://localhost:8000/api/stats
 3. Try searching for a single word (not a phrase)
 4. Check FTS index: `docker exec chat-history-backend sqlite3 /app/volumes/database/conversations.db "SELECT count(*) FROM conversations_fts;"`
+5. If you see `database disk image is malformed`, rebuild FTS index:
+   `docker exec chat-history-backend sqlite3 /app/volumes/database/conversations.db "INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild');"`
 
 ### Container Won't Start
 
@@ -151,7 +153,9 @@ Common issues and solutions for the AI Chat History extension and backend.
 **Solution:**
 1. Backup database: `docker cp chat-history-backend:/app/volumes/database/conversations.db ./backup.db`
 2. Try repair: `docker exec chat-history-backend sqlite3 /app/volumes/database/conversations.db "PRAGMA integrity_check;"`
-3. If corrupted, restore from backup or delete and re-sync:
+3. If integrity is OK but search fails, rebuild FTS index:
+   `docker exec chat-history-backend sqlite3 /app/volumes/database/conversations.db "INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild');"`
+4. If corrupted, restore from backup or delete and re-sync:
    ```bash
    docker-compose down
    rm -rf volumes/database/conversations.db

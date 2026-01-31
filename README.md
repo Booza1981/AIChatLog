@@ -204,6 +204,8 @@ Quick fixes:
 - **Backend unreachable**: Run `docker-compose up -d`
 - **Sync fails**: Open console (F12) on Claude/Gemini page to see error details
 - **Recent conversations missing**: Use "Sync All" instead of "Sync Current"
+- **Search error: database disk image is malformed**: Rebuild FTS index:
+  `docker exec -it chat-history-backend sqlite3 /app/volumes/database/conversations.db "INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild');"`
 
 ## 📊 Database Schema
 
