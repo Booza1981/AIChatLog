@@ -254,7 +254,17 @@
                 if (dateTo) params.append('date_to', dateTo);
 
                 const response = await fetch(`${API_BASE}/search?${params}`);
-                const data = await response.json();
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (parseError) {
+                    data = null;
+                }
+
+                if (!response.ok) {
+                    const detail = data && data.detail ? data.detail : 'Search failed';
+                    throw new Error(detail);
+                }
 
                 displayResults(data);
             } catch (error) {
@@ -271,6 +281,16 @@
 
         function displayResults(data) {
             const resultsDiv = document.getElementById('results');
+
+            if (!data || !Array.isArray(data.results)) {
+                resultsDiv.innerHTML = `
+                    <div class="error-message">
+                        <h3>Search Error</h3>
+                        <p>Unexpected response from the server.</p>
+                    </div>
+                `;
+                return;
+            }
 
             if (data.results.length === 0) {
                 resultsDiv.innerHTML = `

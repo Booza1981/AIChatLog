@@ -267,7 +267,7 @@ services:
       - "8000:8000"
     volumes:
       - ./volumes/browser-profiles:/app/volumes/browser-profiles
-      - ./volumes/database:/app/volumes/database
+      - ./Database:/app/volumes/database
     environment:
       - SCRAPE_INTERVAL_HOURS=2
       - LOG_LEVEL=INFO

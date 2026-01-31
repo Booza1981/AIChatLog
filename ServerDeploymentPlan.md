@@ -165,7 +165,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./volumes/database:/app/volumes/database
+      - ./Database:/app/volumes/database
       - ./backend:/app
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}

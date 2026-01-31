@@ -219,7 +219,7 @@ See `PROJECT_SPEC.md` for detailed schema.
 ## 🔐 Security Notes
 
 - Extension uses your browser's existing authentication (no separate login)
-- Database stored locally in Docker volume (not cloud-synced)
+- Database stored locally (path configurable via `DATABASE_VOLUME_PATH`)
 - Do NOT expose ports 8000/3000 externally without adding authentication
 - Extension only runs on claude.ai, gemini.google.com, chat.openai.com, chatgpt.com (limited host permissions)
 
